@@ -1,0 +1,37 @@
+---
+setup:
+  title: "Dewfault Panda Configuration"
+  experiment: ""
+  year: 2024
+  user: "None"
+  instrument: "i22"
+  detector_config:
+
+detector_config:
+  detectors: ["saxs", "waxs"]
+  frequency_multiplier: [1, 1] #ie first detector can run 4x faster than second
+  saxs:
+    detector: "Pilatus2M_SAXS"
+    pixels: 512
+    rasters: 512
+  waxs:
+    detector: "Pilatus2M_WAXS"
+    pixels: 512
+    rasters: 1
+
+
+profile-1:
+  cycles: 1
+  in_trigger: "something"
+  out_trigger: "somethingelse"
+
+  group-1:
+    frames: 1
+    wait_time: 100
+    wait_units: "msec"
+    run_time: 100
+    run_units: "msec"
+    wait_pause: False
+    run_pause: False
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [0, 0, 0, 0, 0, 0, 0, 0]

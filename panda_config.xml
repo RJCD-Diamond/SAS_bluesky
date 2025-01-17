@@ -1,0 +1,34 @@
+<?xml version='1.0'?>
+<Experiment>
+<!--Created: Wed Jan 08 09:41:01 GMT 2025-->
+<Timing>
+<Profile>1,
+Cycles=1,Start-Method=17,Ext-Inhibit=true
+<Trigger>
+<Debounce>NaN NaN NaN NaN NaN NaN NaN 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 </Debounce>
+<Threshold>NaN 0.0 0.0 0.0 0.0 0.0 0.0 NaN NaN NaN NaN NaN NaN NaN NaN 0.0 </Threshold>
+</Trigger>
+<OutputTrigger>
+<Inversion>3</Inversion>
+<Drive>63</Drive>
+</OutputTrigger>
+<Frames>1,3,msec,3,msec,No Pause,No Pause,10000000,10000000</Frames>
+<Frames>1,0,msec,1,msec,No Pause,No Pause,00000000,11000000</Frames>
+<Frames>8,0,msec,1,msec,No Pause,No Pause,00000000,10000000</Frames>
+<Frames>1,0,msec,3,msec,No Pause,No Pause,00000000,10000000</Frames>
+<Frames>1,100,msec,0,msec,No Pause,No Pause,00000000,00000000</Frames>
+</Profile>
+<Profile>2,
+Cycles=1,Start-Method=0,Ext-Inhibit=false
+<Trigger>
+<Debounce>NaN NaN NaN NaN NaN NaN NaN 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 </Debounce>
+<Threshold>NaN 0.0 0.0 0.0 0.0 0.0 0.0 NaN NaN NaN NaN NaN NaN NaN NaN 0.0 </Threshold>
+</Trigger>
+<OutputTrigger>
+<Inversion>192</Inversion>
+<Drive>0</Drive>
+</OutputTrigger>
+<Frames>33,5,msec,1000,msec,No Pause,No Pause,00100000,11111111</Frames>
+</Profile>
+</Timing>
+</Experiment>

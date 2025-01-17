@@ -1,0 +1,54 @@
+title = "Time Frame Configure"
+experiment = "cm37271-5"
+
+
+[profile.1]
+
+	[profile.1.group.1]
+
+		frames = 1
+		wait_time = 3
+		wait_units = "msec"
+		run_time = 3
+		run_units = "msec"
+		wait_pause = false
+		rub_pause = false
+		wait_pulses = [1, 0, 0, 0, 0, 0, 0, 0]
+		run_pulses = [1, 0, 0, 0, 0, 0, 0, 0]
+
+	[profile.1.group.2]
+
+		frames = 1
+		wait_time = 0
+		wait_units = "msec"
+		run_time = 1
+		run_units = "msec"
+		wait_pause = false
+		rub_pause = false
+		wait_pulses = [0, 0, 0, 0, 0, 0, 0, 0]
+		run_pulses = [1, 1, 0, 0, 0, 0, 0, 0]
+
+	[profile.1.group.3]
+
+		frames = 8
+		wait_time = 0
+		wait_units = "msec"
+		run_time = 1
+		run_units = "msec"
+		wait_pause = false
+		rub_pause = false
+		wait_pulses = [0, 0, 0, 0, 0, 0, 0, 0]
+		run_pulses = [1, 0, 0, 0, 0, 0, 0, 0]
+
+	[profile.1.group.4]
+
+		frames = 1
+		wait_time = 0
+		wait_units = "msec"
+		run_time = 3
+		run_units = "msec"
+		wait_pause = false
+		rub_pause = false
+		wait_pulses = [0, 0, 0, 0, 0, 0, 0, 0]
+		run_pulses = [1, 0, 0, 0, 0, 0, 0, 0]
+
