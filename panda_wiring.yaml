@@ -1,0 +1,22 @@
+---
+
+BL: "I22"
+
+TTLIN:
+  1: "TFG Detector Pulse"
+  2: "TFG Fast Shutter Gate"
+  3:
+  4:
+  5:
+  6:
+TTLOUT:  
+  1: "I0 TetrAMM"
+  2: "Fast Shutter"
+  3: "Optical Camera"
+  4: "User TetrAMM"
+  5: "WAXS Detector"
+  6: "BSDIODES TetrAMM"
+  7: "SAXS Detector"
+  8: "User Trigger"
+  9: "User TFG Trigger Passthrough1"
+  10: "User TFG Trigger Passthrough2"
