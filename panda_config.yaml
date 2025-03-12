@@ -8,7 +8,6 @@ detector_config:
 
 detector_config:
   detectors: ["saxs", "waxs"]
-  frequency_multiplier: [1, 2, 4, 8, 16] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
   saxs:
     detector: "Rapid2D"
     pixels: 512
@@ -24,6 +23,8 @@ profile-0:
   cycles: 3
   in_trigger: "BITA_0"
   out_trigger: "TTLOUT1"
+  multiplier: [1, 2, 4, 8, 16] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
+
 
   group-0:
     frames: 1
@@ -33,8 +34,8 @@ profile-0:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [1, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0]
 
   group-1:
     frames: 1
@@ -44,8 +45,8 @@ profile-0:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
 
   group-2:
     frames: 8
@@ -55,8 +56,8 @@ profile-0:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0]
 
   group-3:
     frames: 1
@@ -66,8 +67,8 @@ profile-0:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0]
   
   group-5:
     frames: 1
@@ -77,16 +78,18 @@ profile-0:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
 
 
 
 
 profile-1:
+  start_method: 0
   cycles: 1
   in_trigger: "POSC_LT"
   out_trigger: "TTLOUT2"
+  multiplier: [1, 2, 4, 8, 16] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
 
   group-0:
     frames: 1
@@ -96,5 +99,5 @@ profile-1:
     run_units: "ms"
     wait_pause: false
     run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0, 0, 0, 0, 0]

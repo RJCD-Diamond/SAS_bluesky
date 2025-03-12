@@ -1,6 +1,6 @@
 ---
 title: Panda Configure
-experiment: cuisdcivun
+experiment: cm37271-5
 year: 2025
 user: Default
 instrument: i22
@@ -9,6 +9,7 @@ profile-0:
   cycles: 3
   in_trigger: BITA_0
   out_trigger: TTLOUT1
+  multiplier: [1, 2, 4, 8, 16]
   group-0:
     id: 0
     frames: 1
@@ -69,6 +70,7 @@ profile-1:
   cycles: 1
   in_trigger: POSC_LT
   out_trigger: TTLOUT2
+  multiplier: [1, 2, 4, 8, 16]
   group-0:
     id: 0
     frames: 1

@@ -16,13 +16,12 @@ from ophyd_async.fastcs.panda import (
 )
 
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
-from ophyd_async.core import save_device
+from ophyd_async.plan_stubs import store_settings
 
 import bluesky.plan_stubs as bps
 from bluesky import RunEngine
 from dodal.beamlines.i22 import panda1
 
-from dodal.plans.save_panda import _save_panda
 
 """
 
@@ -46,6 +45,10 @@ Group and Profile dataclasses
 """
 
 
+time_units = {"ns": 1e-9, "nsec": 1e-9, "usec": 1e-6, "ms": 1e-3, "msec": 1e-3,
+	"s": 1, "sec": 1, "min": 60, "m": 60, "hour": 60*60, "h": 60*60 }
+
+
 @dataclass
 class Group():
 
@@ -62,31 +65,37 @@ class Group():
 
 
 	def __post_init__(self):
+		self.recalc_times()
 
+	def recalc_times(self):
+		
 		self.wait_time_s = self.wait_time*ncdcore.to_seconds(self.wait_units)
 		self.run_time_s = self.run_time*ncdcore.to_seconds(self.run_units)
 		self.group_duration = (self.wait_time_s+self.run_time_s)*self.frames
+
 	
 	def seq_row(self):
+
+		self.recalc_times()
 		
 		seq_row  = SeqTable.row(
 			repeats = self.frames,
 			trigger = SeqTrigger.IMMEDIATE,
 			position = 0,
-			time1 = in_micros(self.run_time_s),
-			outa1 = self.run_pulses[0],
-			outb1 = self.run_pulses[1],
-			outc1 = self.run_pulses[2],
-			outd1 = self.run_pulses[3],
-			oute1 = self.run_pulses[4],
-			outf1 = self.run_pulses[5],
-			time2 = in_micros(self.wait_time_s),
-			outa2 = self.wait_pulses[0],
-			outb2 = self.wait_pulses[1],
-			outc2 = self.wait_pulses[2],
-			outd2 = self.wait_pulses[3],
-			oute2 = self.wait_pulses[4],
-			outf2 = self.wait_pulses[5],
+			time1 = in_micros(self.wait_time_s),
+			outa1 = self.wait_pulses[0],
+			outb1 = self.wait_pulses[1],
+			outc1 = self.wait_pulses[2],
+			outd1 = self.wait_pulses[3],
+			oute1 = self.wait_pulses[4],
+			outf1 = self.wait_pulses[5],
+			time2 = in_micros(self.run_time_s),
+			outa2 = self.run_pulses[0],
+			outb2 = self.run_pulses[1],
+			outc2 = self.run_pulses[2],
+			outd2 = self.run_pulses[3],
+			oute2 = self.run_pulses[4],
+			outf2 = self.run_pulses[5],
 		)
 
 		return seq_row
@@ -101,9 +110,7 @@ class Profile():
 	in_trigger: str
 	out_trigger: str
 	groups: list
-
-	time_units = {"ns": 1e-9, "nsec": 1e-9, "usec": 1e-6, "ms": 1e-3, "msec": 1e-3,
-		"s": 1, "sec": 1, "min": 60, "m": 60, "hour": 60*60, "h": 60*60 }
+	multiplier: list
 
 	def __post_init__(self):
 		
@@ -121,6 +128,8 @@ class Profile():
 			new_groups.append(group)
 
 		self.groups = new_groups
+
+		[f.recalc_times() for f in self.groups]
 
 
 	def analyse_profile(self):
@@ -145,6 +154,10 @@ class Profile():
 
 		self.n_groups = len(self.groups)
 		self.veto_trigger_time, self.veto_signal, self.active_out = self.build_veto_signal()
+
+
+		close_list = [np.abs(1-np.log10(np.amin((np.asarray(self.veto_trigger_time[self.veto_trigger_time!=0])/time_units[i])))) for i in time_units.keys()]
+		self.best_time_unit = list(time_units)[np.argmin(close_list)]
 
 
 	def append_group(self, Group, analyse_profile=True):
@@ -235,7 +248,7 @@ class Profile():
 
 	def build_usr_signal(self,usr):
 
-		trigger_time = [-1*self.time_units[self.best_time_unit]]
+		trigger_time = [-1*time_units[self.best_time_unit]]
 		usr_signal = [0] #starts low and ends low
 
 		trigger_time.append(0)
@@ -284,9 +297,6 @@ class Profile():
 
 
 		self.veto_trigger_time, self.veto_signal, self.active_out = self.build_veto_signal()
-
-		close_list = [np.abs(1-np.log10(np.amin((np.asarray(self.veto_trigger_time[self.veto_trigger_time!=0])/self.time_units[i])))) for i in self.time_units.keys()]
-		self.best_time_unit = list(self.time_units)[np.argmin(close_list)]
 		
 		print("plotting in:", self.best_time_unit)
 
@@ -294,12 +304,12 @@ class Profile():
 
 		if len(self.active_out) > 0:
 
-			axes[0].step(self.veto_trigger_time/self.time_units[self.best_time_unit],self.veto_signal)
+			axes[0].step(self.veto_trigger_time/time_units[self.best_time_unit],self.veto_signal)
 			axes[0].set_ylabel("Veto Signal")
 
 			for u in range(len(self.active_out)):
 				usr_trigger_time, usr_signal = self.build_usr_signal(u)
-				axes[u+1].step(usr_trigger_time/self.time_units[self.best_time_unit],usr_signal)
+				axes[u+1].step(usr_trigger_time/time_units[self.best_time_unit],usr_signal)
 				axes[u+1].set_ylabel(f"Usr{u} Signal")
 				
 			plt.xlabel(f"Time ({self.best_time_unit})")
@@ -388,6 +398,7 @@ class PandaTriggerConfig():
 				profile_cycles = config[profile_name]["cycles"]
 				profile_trigger = config[profile_name]["in_trigger"]
 				out_trigger = config[profile_name]["out_trigger"]
+				multiplier = config[profile_name]["multiplier"]
 				groups = {key: config[profile_name][key] for key in config[profile_name].keys() if key.startswith("group")}
 				group_list = []
 
@@ -408,7 +419,7 @@ class PandaTriggerConfig():
 					print("Not a valid in trigger")
 					quit()
 
-				n_profile = Profile(p, profile_cycles, profile_trigger, out_trigger, group_list)
+				n_profile = Profile(p, profile_cycles, profile_trigger, out_trigger, group_list, multiplier)
 
 				profiles.append(n_profile)
 

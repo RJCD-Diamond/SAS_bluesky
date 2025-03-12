@@ -16,14 +16,13 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog as fd
 
+from bluesky.run_engine import RunEngine
+
 from dodal.beamlines import module_name_for_beamline
 from dodal.common.beamlines.beamline_utils import set_beamline as set_utils_beamline
 from dodal.log import set_beamline as set_log_beamline
 from dodal.utils import BeamlinePrefix, get_beamline_name
 # from dodal.common.maths import in_micros
-from dodal.utils import make_device
-from dodal.plans.save_panda import _save_panda
-
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
 	HDFPanda,
@@ -33,10 +32,15 @@ from ophyd_async.fastcs.panda import (
 	TimeUnits
 )
 
+from dodal.beamlines.i22 import panda1
+
 import bluesky.plan_stubs as bps
 
 from ProfileGroups import Profile, Group, PandaTriggerConfig
 from ncdcore import ncdcore
+
+
+from ncd_panda import *
 
 __version__ = '0.1'
 __author__ = 'Richard Dixey'
@@ -74,8 +78,10 @@ class PandaIO():
 					print("Must be a yaml file")
 
 		self.TTLIN = self.wiring_config["TTLIN"]
+		self.LVDSIN = self.wiring_config["LVDSIN"]
 		self.TTLOUT = self.wiring_config["TTLOUT"]
-
+		self.LVDSOUT = self.wiring_config["LVDSOUT"]
+		self.PulseBlocks = self.wiring_config["PulseBlocks"]
 
 ##################################################################
 
@@ -101,8 +107,6 @@ class EditableTableview(ttk.Treeview):
 		# what row and column was clicked on
 		rowid = self.identify_row(event.y)
 		column = self.identify_column(event.x)
-
-		print(column)
 
 		# get column position info
 		x,y,width,height = self.bbox(rowid, column)
@@ -366,7 +370,8 @@ class ProfileTab(ttk.Frame):
 			del self.profile_config_tree
 		except:
 			pass
-
+		
+		table_row = 5
 
 		### add tree view ############################################
 		self.profile_config_tree = EditableTableview(self, columns=self.Columns, show="headings")
@@ -385,7 +390,7 @@ class ProfileTab(ttk.Frame):
 			group_list = list(group_dict.values())[0:len(self.Columns)]
 
 			self.profile_config_tree.insert("", "end", values=group_list)
-		self.profile_config_tree.grid(column = 0, row = 3,padx = 5,pady = 5,columnspan=len(self.Columns),rowspan=5)
+		self.profile_config_tree.grid(column = 0, row = table_row,padx = 5,pady = 5,columnspan=len(self.Columns),rowspan=5)
 		# self.profile_config_tree.bind("<Double-1>", lambda event: self.onDoubleClick(event))
 
 		verscrlbar = ttk.Scrollbar(self, 
@@ -394,7 +399,7 @@ class ProfileTab(ttk.Frame):
  
 		# Calling pack method w.r.to vertical 
 		# scrollbar
-		verscrlbar.grid(column = 10, row = 3,padx = 0,pady = 0,columnspan=1,rowspan=5, sticky='ns')
+		verscrlbar.grid(column = 10, row = table_row,padx = 0,pady = 0,columnspan=1,rowspan=5, sticky='ns')
 		
 		# Configuring treeview
 		self.profile_config_tree.configure(yscrollcommand = verscrlbar.set)
@@ -458,13 +463,30 @@ class ProfileTab(ttk.Frame):
 		for i in self.profile.groups:
 			print(i)
 
+	
+	def build_multiplier_choices(self):
 
-	def __init__(self, notebook, configuration, n_profile):
+		pulse_block_names = ["TetrAMMs/Detectors", "Cam","Fluorescence","User"]
+
+		pulse_column = 5
+		
+		for i in range(4): #4 pulse blocks
+
+			ttk.Label(self, text =pulse_block_names[i]).grid(column =pulse_column, row = i, padx = 5,pady = 5 ,sticky="e" )
+			self.multiplier_var = tk.StringVar(value=self.profile.multiplier[i])
+			tk.Entry(self, bd =1, textvariable=self.multiplier_var).grid(column = pulse_column+1, row = i, padx = 5,pady = 5 ,sticky="w" )
+
+
+
+
+
+	def __init__(self, notebook, configuration, n_profile, BeamlinePandaIO):
 
 		self.notebook = notebook
 		self.configuration = configuration
 		self.n_profile = n_profile
 		self.profile = self.configuration.profiles[self.n_profile]
+		self.BeamlinePandaIO = BeamlinePandaIO
 
 		self.seq_table = self.profile.seq_table()
 
@@ -502,6 +524,7 @@ class ProfileTab(ttk.Frame):
 		self.outputs = self.profile.outputs()
 		self.inputs = self.profile.inputs()
 
+		self.build_multiplier_choices()
 
 		self.default_group = Group(0, 1, 1, "ms", 1, "ms", False, False, [1,0,0,0,0,0,0,0], [1,0,0,0,0,0,0,0])
 
@@ -587,6 +610,24 @@ class ProfileTab(ttk.Frame):
 
 		self.print_profile_button = tk.Button(self, text ="Print Profile", command = self.print_profile_button_action).grid(column = 5, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
 
+		print(self.BeamlinePandaIO.PulseBlocks)
+
+		for p,n_pulse_block in enumerate(self.BeamlinePandaIO.PulseBlocks.keys()):
+
+			pulse_block_dets = self.BeamlinePandaIO.PulseBlocks[n_pulse_block]
+			
+			for n,n_det in enumerate(pulse_block_dets):
+
+				device_name = self.BeamlinePandaIO.TTLOUT[n_det]
+
+				det_on = tk.IntVar() 
+				tk.Checkbutton(self, text = device_name, 
+								variable = det_on, 
+								onvalue = 1, 
+								offvalue = 0, 
+								height = 2, 
+								width = 20).grid(column = 11+n, row = p*2, padx = 5,pady = 5 ,sticky="w" )
+
 
 class PandaConfigBuilderGUI(tk.Tk):
 
@@ -661,6 +702,18 @@ class PandaConfigBuilderGUI(tk.Tk):
 		
 		return None
 	
+	def commit_config(self):
+
+		tab_names = self.notebook.tabs()
+
+		for i in range(self.configuration.n_profiles):
+
+			proftab_object = self.notebook.nametowidget(tab_names[i])
+			proftab_object.edit_config_for_profile()
+
+		self.configuration.experiment = self.experiment_var.get()
+
+	
 
 	def load_config(self):
 		
@@ -680,15 +733,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 		
 		if panda_config_yaml:
 
-			tab_names = self.notebook.tabs()
-
-			for i in range(self.configuration.n_profiles):
-
-				proftab_object = self.notebook.nametowidget(tab_names[i])
-				proftab_object.edit_config_for_profile()
-
-			
-			self.configuration.experiment = self.experiment_var.get()
+			self.commit_config()
 			self.configuration.save_to_yaml(panda_config_yaml.name)
 
 
@@ -699,9 +744,26 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 	def configure_panda(self):
 
-		self.seq_table = self.profile.seq_table()
+		self.commit_config()
+		index = self.notebook.index("current")
+		profile_to_upload = self.configuration.profiles[index]
+		seq_table = profile_to_upload.seq_table()
+		n_cycles = profile_to_upload.cycles
+
+		RE(modify_panda_seq_table(self.panda, seq_table, n_cycles, prescale_unit='us' ,n_seq=1))
 
 
+
+
+
+	def open_textedit(self):
+
+		try:
+			os.system("/dls_sw/apps/atom/1.42.0/atom & ")
+		except IOError:
+			os.system("subl & ")
+		except:
+			os.system("gedit & ")
 
 
 	def show_wiring_config(self):
@@ -723,9 +785,64 @@ class PandaConfigBuilderGUI(tk.Tk):
 		plt.xlim(-0.2,2)
 		plt.show()
 
+	def run_experiment(self):
+
+		print(np.random.random())
+
+		run_arm(beamline, device_name)
+
+
+	def build_exp_run_frame(self):
+		
+		self.run_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
+		self.run_frame.pack(fill ="both",expand=True, side="right")
+		self.run_button = tk.Button(self.run_frame, text ="Run Sequence", command = self.run_experiment).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
+
+
+	def build_global_settings_frame(self):
+
+		self.global_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
+		self.global_settings_frame.pack(fill ="both",expand=True, side="left")
+
+		#add a load/save/configure button
+		self.load_button = tk.Button(self.global_settings_frame, text ="Load", command = self.load_config).grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		self.save_button = tk.Button(self.global_settings_frame, text ="Save", command = self.save_config).grid(column = 1, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		self.configure_button = tk.Button(self.global_settings_frame, text ="Upload to PandA", command = self.configure_panda).grid(column =2, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+
+		self.show_wiring_config_button = tk.Button(self.global_settings_frame, text ="Wiring config", command = self.show_wiring_config).grid(column = 4, row = 0, padx = 5,pady = 5,columnspan=1)
+		self.Opentextbutton = tk.Button(self.global_settings_frame, text ="Open Text Editor", command = self.open_textedit).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1)
+
+
+	def build_add_frame(self):
+
+		self.add_frame = tk.Frame()
+		self.notebook.add(self.add_frame, text="+")
+		self.window.bind("<<NotebookTabChanged>>", self.add_profile_tab)
+
+	
+	def build_exp_info_frame(self):
+
+		self.experiment_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
+		self.experiment_settings_frame.pack(fill ="both",expand=True, side="left",anchor="w")
+
+		self.experiment_var = tk.StringVar(value=self.configuration.experiment)
+		tk.Label(self.experiment_settings_frame, text ="Instrument: "+self.configuration.instrument.upper()).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		tk.Label(self.experiment_settings_frame, text ="Experiment:").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="w" )
+		tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_var).grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
+		
+		# self.experiment_dir = tk.StringVar(value=self.configuration.data_dir)
+		# tk.Label(self.experiment_settings_frame, text ="Save dir:").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="w" )
+		# tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_dir, width=30).grid(column = 1, row = 2, padx = 5,pady = 5 ,sticky="w" )
 
 
 	def __init__(self,panda_config_yaml=None):
+
+		try:
+			self.panda = return_connected_device("i22", "panda1")
+		except:
+			answer = tk.messagebox.askyesno("PandA not Connected", "PandA is not connected, if you continue things will not work. Continue?")
+			if answer:
+				pass
 
 
 		self.panda_config_yaml = panda_config_yaml
@@ -744,59 +861,43 @@ class PandaConfigBuilderGUI(tk.Tk):
 			self.configuration.experiment = user_input
 
 
-		self.default_ioconfig = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_wiring.yaml")
+		self.default_ioconfig = os.path.join(os.path.dirname(os.path.realpath(__file__)),BL+"_panda_wiring.yaml")
 		self.BeamlinePandaIO = PandaIO(self.default_ioconfig)
 
 		self.profiles = self.configuration.profiles
 		
 		self.window = tk.Tk()
 		self.window.resizable(1,1)
-		# self.window.geometry('2030x600')
+		self.window.minsize(600,200)
+
+		self.build_exp_run_frame()
+
+
+
 		self.window.title("Panda Config") 
 		self.notebook = ttk.Notebook(self.window)
 		self.notebook.pack(fill ="both",expand=True)
 
 		for i in range(self.configuration.n_profiles):
 
-			ProfileTab(self.notebook, self.configuration, i)
+			ProfileTab(self.notebook, self.configuration, i, self.BeamlinePandaIO)
 			tab_names = self.notebook.tabs()
 			proftab_object = self.notebook.nametowidget(tab_names[i])
 			self.delete_profile_button = tk.Button(proftab_object, text ="Delete Profile", command = self.delete_profile_tab).grid(column = 4, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
 
 	
 		########################################################
-
-		self.experiment_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
-		self.experiment_settings_frame.pack(fill ="both",expand=True, side="left",anchor="w")
-
-
-		self.experiment_var = tk.StringVar(value=self.configuration.experiment)
-		tk.Label(self.experiment_settings_frame, text ="Instrument: "+self.configuration.instrument.upper()).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
-		tk.Label(self.experiment_settings_frame, text ="Experiment:").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="w" )
-		tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_var).grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
-		
-		# self.experiment_dir = tk.StringVar(value=self.configuration.data_dir)
-		# tk.Label(self.experiment_settings_frame, text ="Save dir:").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="w" )
-		# tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_dir, width=30).grid(column = 1, row = 2, padx = 5,pady = 5 ,sticky="w" )
-
+		self.build_exp_info_frame()
 		######## #settings and buttons that apply to all profiles
-
-		self.global_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
-		self.global_settings_frame.pack(fill ="both",expand=True, side="left")
-
-		#add a load/save/configure button
-		self.load_button = tk.Button(self.global_settings_frame, text ="Load", command = self.load_config).grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		self.save_button = tk.Button(self.global_settings_frame, text ="Save", command = self.save_config).grid(column = 1, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		self.configure_button = tk.Button(self.global_settings_frame, text ="Configure", command = self.configure_panda).grid(column =2, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-
-		self.show_wiring_config_button = tk.Button(self.global_settings_frame, text ="Wiring config", command = self.show_wiring_config).grid(column = 4, row = 0, padx = 5,pady = 5,columnspan=1)
-
-		self.add_frame = tk.Frame()
-		self.notebook.add(self.add_frame, text="+")
-		self.window.bind("<<NotebookTabChanged>>", self.add_profile_tab)
-
+		self.build_global_settings_frame()
+		self.build_add_frame()
 		#################################################################
 
+
+		
+		print("Uncomment this when you want to actually upload the panda interface")
+		# run_upload_yaml_to_panda(beamline='i22')
+		# print("upload complete")
 
 		self.window.mainloop()
 
@@ -813,19 +914,12 @@ if __name__ == '__main__':
 	# quit()
 
 
-	gda_config_filepath = '/scratch/i22/panda_config.xml'
-
 	# print(3, decimal_to_binary(3))
 	# print(192, decimal_to_binary(192))
 	# quit()
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
-
 	print(dir_path)
-
-
-	converted_config_filepath = '/scratch/i22/panda_config_original.yaml'
-
 	config_filepath = os.path.join(dir_path,"panda_config.yaml")
 	PandaConfigBuilderGUI(config_filepath)
 	# # quit()
