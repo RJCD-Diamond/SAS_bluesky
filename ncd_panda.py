@@ -293,24 +293,24 @@ def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: 
     n_cycles = profile.cycles
     seq_table = profile.seq_table()
     n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
-
+    duration = profile.duration
 
     # ###setup triggering of detectors
     table_info = SeqTableInfo(sequence_table=seq_table, repeats=n_cycles)
 
 
-    trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-                                trigger=DetectorTrigger.CONSTANT_GATE, 
-                                deadtime=max_deadtime,
-                                multiplier=1,
-                                frame_timeout=None)
-    
     # trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-    #                         trigger=DetectorTrigger.CONSTANT_GATE, 
-    #                         deadtime=max_deadtime,
-    #                         livetime=
-    #                         multiplier=1,
-    #                         frame_timeout=None)
+    #                             trigger=DetectorTrigger.CONSTANT_GATE, 
+    #                             deadtime=max_deadtime,
+    #                             multiplier=1,
+    #                             frame_timeout=None)
+    
+    trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+                            trigger=DetectorTrigger.CONSTANT_GATE, 
+                            deadtime=max_deadtime,
+                            livetime=duration,
+                            multiplier=1,
+                            frame_timeout=None)
 
 
     flyer = StandardFlyer(StaticSeqTableTriggerLogic(panda.seq[n_seq])) #flyer and prepare fly, sets the sequencers table
@@ -318,10 +318,11 @@ def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: 
     for det in detectors:
 
         if 'Tetramm' in str(type(det)):
+            print("Tetramm is currently freezing it")
             continue
 
-        yield from bps.stage(det, group=group,wait=True) #this sets the HDF capture mode to active, MUST BE DONE FIRST
-        yield from bps.prepare(det, trigger_info, wait=True, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
+        yield from bps.stage(det, group=group,wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
+        yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
 
 
     # yield from bps.prepare(panda, trigger_info, wait=True, group=group)
