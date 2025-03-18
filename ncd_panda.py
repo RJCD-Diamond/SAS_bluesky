@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 
 from bluesky.run_engine import RunEngine
-from bluesky.utils import MsgGenerator, Msg
+from bluesky.utils import MsgGenerator
 import bluesky.plan_stubs as bps
 
 from ophyd_async.core import (
@@ -19,8 +19,6 @@ from ophyd_async.core import (
 	AsyncStatus,
 	YamlSettingsProvider)
 
-from ophyd_async.core import PathProvider
-
 
 from ophyd_async.fastcs.panda import (
     HDFPanda,
@@ -31,9 +29,7 @@ from ophyd_async.fastcs.panda import (
 )
 from ophyd_async.plan_stubs import (apply_panda_settings, 
 									retrieve_settings, 
-									store_settings, 
-									get_current_settings, 
-									apply_settings_if_different, 
+									store_settings,
 									ensure_connected)
 
 from ophyd_async.plan_stubs import (
@@ -42,24 +38,22 @@ from ophyd_async.plan_stubs import (
 
 from ophyd_async.epics.adpilatus import PilatusTriggerMode
 
-from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
+# from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 
 
 from dodal.beamlines import module_name_for_beamline
 from dodal.utils import make_device, make_all_devices
+from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
 
 from dodal.common.beamlines.beamline_utils import (
     get_path_provider,
-    set_path_provider,
-)
+    set_path_provider)
 
 from ProfileGroups import (Profile, 
                            Group, 
                            PandaTriggerConfig, time_units)
 
-from dodal.plan_stubs.data_session import attach_data_session_metadata_wrapper
 
-from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
 
 
 #: Buffer added to deadtime to handle minor discrepencies between detector
@@ -67,7 +61,7 @@ from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProv
 DEADTIME_BUFFER = 20e-6
 DEFAULT_SEQ = 1 
 PULSEBLOCK = 4
-GENERAL_TIMEOUT = 10
+GENERAL_TIMEOUT = 1
 
 
 RE = RunEngine(call_returns_result=True) 
@@ -278,7 +272,7 @@ def disable_sequencer(panda: HDFPanda, n_seq: int = 1,  wait: bool = False, grou
     if wait:
         yield from wait_until_complete(panda.seq[n_seq].active, False) #wait for this value to be true
 
-    yield from bps.abs_set(panda.seq[n_seq].enable, PANDA.Disable.value, group=group, GENERAL_TIMEOUT) 
+    yield from bps.abs_set(panda.seq[n_seq].enable, PANDA.Disable.value, group=group) 
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
