@@ -65,8 +65,9 @@ from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProv
 #: Buffer added to deadtime to handle minor discrepencies between detector
 #: and panda clocks
 DEADTIME_BUFFER = 20e-6
-PANDA_TIMEOUT = 30
 DEFAULT_SEQ = 1 
+PULSEBLOCK = 4
+GENERAL_TIMEOUT = 10
 
 
 RE = RunEngine(call_returns_result=True) 
@@ -112,7 +113,7 @@ def make_beamline_devices(beamline: str) -> list:
     return beamline_devices
 
 
-def wait_until_complete(pv_obj, waiting_value=0) -> MsgGenerator:
+def wait_until_complete(pv_obj, waiting_value=0, timeout=None) -> MsgGenerator:
     """
     An async wrapper for the ophyd async wait_for_value function, to allow it to run inside the bluesky run engine
     Typical use case is waiting for an active pv to change to 0, indicating that the run has finished, which then allows the
@@ -191,7 +192,7 @@ def modify_panda_seq_table(panda: HDFPanda, profile: Profile, n_seq=1):
     yield from bps.abs_set(panda.seq[int(n_seq)].repeats, n_cycles, group=group)
     yield from bps.abs_set(panda.seq[int(n_seq)].prescale, 1, group=group)
     yield from bps.abs_set(panda.seq[int(n_seq)].prescale_units, 's', group=group)
-    yield from bps.wait(group=group, timeout=1)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
 def set_pulses(panda: HDFPanda, n_pulse: int, pulse_step: int, frequency_multiplier: int, step_units="ms", width_unit="ms"):
@@ -204,7 +205,7 @@ def set_pulses(panda: HDFPanda, n_pulse: int, pulse_step: int, frequency_multipl
     yield from bps.abs_set(panda.pulse[int(n_pulse)].pulses, frequency_multiplier, group=group)
     yield from bps.abs_set(panda.pulse[int(n_pulse)].step, pulse_step, group=group)
     yield from bps.abs_set(panda.pulse[int(n_pulse)].step_units, step_units, group=group)
-    yield from bps.wait(group=group, timeout=1)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
 
@@ -224,7 +225,7 @@ def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="
     for n_pulse in pulses:
         yield from bps.abs_set(panda.pulse[int(n_pulse)].enable, PANDA.Enable.value, group=group)  # type: ignore
 
-    yield from bps.wait(group=group, timeout=PANDA_TIMEOUT)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
 
@@ -243,7 +244,7 @@ def disarm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq = 1, gr
     for n_pulse in pulses:
         yield from bps.abs_set(panda.pulse[n_pulse].enable, PANDA.Disable.value, group=group)
 
-    yield from bps.wait(group=group, timeout=PANDA_TIMEOUT)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
 
@@ -259,7 +260,7 @@ def start_sequencer(panda: HDFPanda, n_seq: int = 1, group="start"):
     """
 
     yield from bps.abs_set(panda.seq[n_seq].enable, PANDA.Enable.value, group=group)  # type: ignore
-    yield from bps.wait(group=group, timeout=1) 
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT) 
     yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, True) #even though the signal might be sent it may not actually have happened yet, so so until it's true before continuing
 
 
@@ -277,8 +278,8 @@ def disable_sequencer(panda: HDFPanda, n_seq: int = 1,  wait: bool = False, grou
     if wait:
         yield from wait_until_complete(panda.seq[n_seq].active, False) #wait for this value to be true
 
-    yield from bps.abs_set(panda.seq[n_seq].enable, PANDA.Disable.value, group=group) 
-    yield from bps.wait(group=group, timeout=None)
+    yield from bps.abs_set(panda.seq[n_seq].enable, PANDA.Disable.value, group=group, GENERAL_TIMEOUT) 
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
 
@@ -327,7 +328,7 @@ def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: 
 
     # yield from bps.prepare(panda, trigger_info, wait=True, group=group)
     yield from bps.prepare(flyer, table_info, wait=True, group=group)
-    yield from bps.wait(group=group, timeout=10)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
     return flyer
 
@@ -371,7 +372,7 @@ def switch_output(panda: HDFPanda, output_type="TTL", output=1, onoff='ON', grou
         elif output_type == "LVDS":
             yield from bps.abs_set(panda.lvdsout[int(output)].val, PANDA.Disable.value, group=group)
 
-    yield from bps.wait(group=group, timeout=1)
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 @AsyncStatus.wrap
 async def update_path():
@@ -471,7 +472,7 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
     ###########################
     ###########################
     #wait for the sequencer table to finish before continuing
-    yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
+    yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False, GENERAL_TIMEOUT)
     ###########################
     ###########################
 
