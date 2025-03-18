@@ -1,0 +1,37 @@
+---
+
+
+BL: "I22"
+
+TTLIN:
+  1: "TFG Detector Pulse"
+  2: "TFG Fast Shutter Gate"
+  3:
+  4:
+  5:
+  6:
+TTLOUT:  
+  1: "I0_Tet"
+  2: "FS"
+  3: "OAV"
+  4: "User_Tet"
+  5: "WAXS"
+  6: "BSDIODES"
+  7: "SAXS"
+  8: "Fluor"
+  9: "User1"
+  10: "User2"
+
+LVDSIN:
+  1:
+  2:
+
+LVDSOUT:
+  1:
+  2:
+
+PulseBlocks:
+  1: [1, 4, 6, 5, 7]
+  2: [3]
+  3: [8]
+  4: [9, 10]
