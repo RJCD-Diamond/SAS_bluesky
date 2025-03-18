@@ -293,13 +293,15 @@ def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: 
     # ###setup triggering of detectors
     table_info = SeqTableInfo(sequence_table=seq_table, repeats=n_cycles)
 
-
-    # trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-    #                             trigger=DetectorTrigger.CONSTANT_GATE, 
-    #                             deadtime=max_deadtime,
-    #                             multiplier=1,
-    #                             frame_timeout=None)
-    
+    # for pulse in PULSEBLOCKS
+    #   get the pulse block, find out what is attached to it
+    #   set the multiplier and possibly duration accordingly
+    #   trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+    #                              trigger=DetectorTrigger.CONSTANT_GATE, 
+    #                              deadtime=max_deadtime,
+    #                              multiplier=1,
+    #                              frame_timeout=None)
+        
     trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
                             trigger=DetectorTrigger.CONSTANT_GATE, 
                             deadtime=max_deadtime,
