@@ -11,9 +11,7 @@ from ophyd_async.fastcs.panda import (
 	HDFPanda,
 	SeqTable,
 	SeqTrigger,
-	SeqBlock, 
-	TimeUnits
-)
+	SeqBlock)
 
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.plan_stubs import store_settings
@@ -58,13 +56,15 @@ class Group():
 	wait_units: str
 	run_time: int
 	run_units: str
-	wait_pause: bool
-	run_pause: bool
+	pause_trigger: str
 	wait_pulses: list
 	run_pulses: list
 
 
 	def __post_init__(self):
+		self.run_units = self.run_units.upper()
+		self.wait_units = self.wait_units.upper()
+		self.pause_trigger = self.pause_trigger.upper()
 		self.recalc_times()
 
 	def recalc_times(self):
@@ -77,25 +77,31 @@ class Group():
 	def seq_row(self):
 
 		self.recalc_times()
-		
+
+		if not self.pause_trigger:
+			trigger = SeqTrigger.IMMEDIATE
+
+		if self.pause_trigger:
+			trigger = eval(f"SeqTrigger.{self.pause_trigger}")
+
 		seq_row  = SeqTable.row(
 			repeats = self.frames,
-			trigger = SeqTrigger.IMMEDIATE,
+			trigger = trigger,
 			position = 0,
 			time1 = in_micros(self.wait_time_s),
 			outa1 = self.wait_pulses[0],
 			outb1 = self.wait_pulses[1],
 			outc1 = self.wait_pulses[2],
 			outd1 = self.wait_pulses[3],
-			oute1 = self.wait_pulses[4],
-			outf1 = self.wait_pulses[5],
+			# oute1 = self.wait_pulses[4],
+			# outf1 = self.wait_pulses[5],
 			time2 = in_micros(self.run_time_s),
 			outa2 = self.run_pulses[0],
 			outb2 = self.run_pulses[1],
 			outc2 = self.run_pulses[2],
 			outd2 = self.run_pulses[3],
-			oute2 = self.run_pulses[4],
-			outf2 = self.run_pulses[5],
+			# oute2 = self.run_pulses[4],
+			# outf2 = self.run_pulses[5],
 		)
 
 		return seq_row
@@ -107,7 +113,7 @@ class Profile():
 	
 	id: int
 	cycles: int
-	in_trigger: str
+	seq_trigger: str
 	out_trigger: str
 	groups: list
 	multiplier: list
@@ -137,18 +143,20 @@ class Profile():
 		self.wait_matrix = []	
 		self.run_matrix = []
 		self.duration = 0
+		self.duration_per_cycle = 0
 		self.total_frames = 0
 
 		for n_group in self.groups:
 			# n_group = self.groups[n]
 
-			self.duration+=n_group.group_duration
+			self.duration_per_cycle+=n_group.group_duration
 			self.total_frames+=n_group.frames
 
 			self.wait_matrix.append(n_group.wait_pulses)
 			self.run_matrix.append(n_group.run_pulses)
 		
-		
+		self.duration=self.duration_per_cycle*self.cycles
+
 		self.wait_matrix = np.asarray(self.wait_matrix)
 		self.run_matrix = np.asarray(self.run_matrix)
 
@@ -357,7 +365,7 @@ class PandaTriggerConfig():
 	profiles: list
 	instrument: str
 	experiment: str
-	year: int
+	detectors: list
 
 	def __post_init__(self):
 
@@ -382,7 +390,7 @@ class PandaTriggerConfig():
 		
 			instrument = config["instrument"]
 			experiment = config["experiment"]
-			user = config["user"]
+			detectors = config["detectors"]
 
 			if "year" not in config:
 				year = datetime.now().year
@@ -396,7 +404,7 @@ class PandaTriggerConfig():
 			for p,profile_name in enumerate(profile_names):
 
 				profile_cycles = config[profile_name]["cycles"]
-				profile_trigger = config[profile_name]["in_trigger"]
+				profile_trigger = config[profile_name]["seq_trigger"]
 				out_trigger = config[profile_name]["out_trigger"]
 				multiplier = config[profile_name]["multiplier"]
 				groups = {key: config[profile_name][key] for key in config[profile_name].keys() if key.startswith("group")}
@@ -407,23 +415,23 @@ class PandaTriggerConfig():
 					group = config[profile_name][group_name]
 
 					n_Group  = Group(g, group["frames"], group["wait_time"], group["wait_units"], group["run_time"], group["run_units"],
-						group["wait_pause"], group["run_pause"], group["wait_pulses"], group["run_pulses"])
+						group["pause_trigger"], group["wait_pulses"], group["run_pulses"])
 
 					group_list.append(n_Group)
 
 
-				if not out_trigger in Profile.outputs():
-					print("Not a valid out trigger")
-					quit()
-				if not profile_trigger in Profile.seq_triggers():
-					print("Not a valid in trigger")
-					quit()
+				# if not out_trigger in Profile.outputs():
+				# 	print("Not a valid out trigger")
+				# 	quit()
+				# if not profile_trigger in Profile.seq_triggers():
+				# 	print("Not a valid in trigger")
+				# 	quit()
 
 				n_profile = Profile(p, profile_cycles, profile_trigger, out_trigger, group_list, multiplier)
 
 				profiles.append(n_profile)
 
-			self = PandaTriggerConfig(profiles, instrument, experiment, year)
+			self = PandaTriggerConfig(profiles, instrument, experiment, detectors)
 
 			return self
 		
@@ -432,9 +440,8 @@ class PandaTriggerConfig():
 
 		exp_dict = {"title": "Panda Configure",
 					"experiment": self.experiment, 
-					"year": self.year, 
-					"user": "Default", 
-					"instrument": self.instrument}
+					"instrument": self.instrument,
+					"detectors": self.detectors}
 
 
 		for p,profile in enumerate(self.profiles):
@@ -466,8 +473,6 @@ class PandaTriggerConfig():
 		self.profiles.pop(n)
 		self.re_id_profiles()
 		self.__post_init__()
-
-		print(self.profiles)
 
 	def append_profile(self, Profile):
 

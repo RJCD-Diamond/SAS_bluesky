@@ -23,6 +23,12 @@ from dodal.common.beamlines.beamline_utils import set_beamline as set_utils_beam
 from dodal.log import set_beamline as set_log_beamline
 from dodal.utils import BeamlinePrefix, get_beamline_name
 # from dodal.common.maths import in_micros
+from dodal.utils import make_device
+try:
+	from dodal.plans.save_panda import _save_panda 
+except:
+	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
+
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
 	HDFPanda,
@@ -40,8 +46,6 @@ from ProfileGroups import Profile, Group, PandaTriggerConfig
 from ncdcore import ncdcore
 
 
-from ncd_panda import *
-
 __version__ = '0.1'
 __author__ = 'Richard Dixey'
 
@@ -56,6 +60,11 @@ print(get_beamline_name(BL))
 set_log_beamline(BL)
 set_utils_beamline(BL)
 
+PULSEBLOCKS = 4
+PULSEBLOCKASENTRYBOX = False
+PULSE_BLOCK_NAMES = ["FS", "DETS/TETS","OAV","Fluro"]
+COLUMN_NAMES = ["Groups","Frames","Wait Time", "Wait Units", "Run Time", "Run Units", "Pause Trigger", "Wait Pulses", "Run Pulses"]
+THEME_NAME = "clam"
 # print(module_name_for_beamline(BL))
 
 # _save_panda(BL, "panda1", "/scratch/panda_test.txt")
@@ -78,19 +87,26 @@ class PandaIO():
 					print("Must be a yaml file")
 
 		self.TTLIN = self.wiring_config["TTLIN"]
-		self.LVDSIN = self.wiring_config["LVDSIN"]
 		self.TTLOUT = self.wiring_config["TTLOUT"]
+		self.LVDSIN= self.wiring_config["LVDSIN"]
 		self.LVDSOUT = self.wiring_config["LVDSOUT"]
 		self.PulseBlocks = self.wiring_config["PulseBlocks"]
 
+
 ##################################################################
+
+default_ioconfig = os.path.join(os.path.dirname(os.path.realpath(__file__)),BL+"_panda_wiring.yaml")
+BeamlinePandaIO = PandaIO(default_ioconfig)
+
 
 ############################################################################################
 
 class EditableTableview(ttk.Treeview):
 	
-	def __init__(self, *args, **kwargs):
-		super().__init__(*args, **kwargs)
+	def __init__(self, parent, *args, **kwargs):
+
+		self.parent = parent
+		super().__init__(parent, *args, **kwargs)
 		self.bind("<Double-1>", lambda event: self.onDoubleClick(event))
 
 	def onDoubleClick(self, event):
@@ -100,13 +116,14 @@ class EditableTableview(ttk.Treeview):
 
 		# close previous popups
 		try:  # in case there was no previous popup
-			self.entryPopup.destroy()
+			self.Popup.destroy()
 		except AttributeError:
 			pass
 
 		# what row and column was clicked on
 		rowid = self.identify_row(event.y)
 		column = self.identify_column(event.x)
+
 
 		# get column position info
 		x,y,width,height = self.bbox(rowid, column)
@@ -127,37 +144,45 @@ class EditableTableview(ttk.Treeview):
 
 			# place dropdown popup properly
 			options = list(TimeUnits.__dict__["_member_names_"])
-			options = [f.lower() for f in options]
-			
-			self.dropdownPopup = DropdownPopup(self, rowid, int(column[1:])-1, text, options)
-			self.dropdownPopup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
+			# options = [f.lower() for f in options]
 
-			return
+			self.Popup = DropdownPopup(self, rowid, int(column[1:])-1, text, options)
+			self.Popup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
 
-		elif column in ["#7","#8"]: #these groups create a drop down menu
+		elif column in ["#7"]: #these groups create a drop down menu
 
 			# place dropdown popup properly
-			options = ["True", "False"]
-			self.dropdownPopup = DropdownPopup(self, rowid, int(column[1:])-1, text, options)
-			self.dropdownPopup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
+
+			TTLIN = list(BeamlinePandaIO.TTLIN)
+			TTLIN = [f"TTLIN{f}" for f in TTLIN]
+			LVDSIN = list(BeamlinePandaIO.LVDSIN)
+			LVDSIN = [f"LVDSIN{f}" for f in LVDSIN]
+
+			options = list(SeqTrigger.__dict__["_member_names_"])
+
+			# options = ["True", "False"]
+			self.Popup = DropdownPopup(self, rowid, int(column[1:])-1, text, options)
+			self.Popup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
 
 
-			return
+		elif (column in ["#8", "#9"]):
 
-		elif column in ["#9", "#10"]:
 
-			RadioPopUp = RadioButtonPopup(self, x=x,y=y+pady)
+			if (PULSEBLOCKASENTRYBOX == False):
+				self.Popup = CheckButtonPopup(self, rowid, int(column[1:])-1, x=x,y=y, columns=COLUMN_NAMES)
+			if (PULSEBLOCKASENTRYBOX == True):
+				self.Popup = EntryPopup(self, rowid, int(column[1:])-1, text, entrytype=list)
+				self.Popup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
 
 		else:
 
 			# place Entry popup properly
-			self.entryPopup = EntryPopup(self, rowid, int(column[1:])-1, text, entrytype=int)
-			self.entryPopup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
+			self.Popup = EntryPopup(self, rowid, int(column[1:])-1, text, entrytype=int)
+			self.Popup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
 
-			return
+		return
 
-
-class DropdownPopup(ttk.OptionMenu):
+class DropdownPopup(ttk.Combobox):
 	def __init__(self, parent, rowid, column, text, options, **kw):
 		ttk.Style().configure('pad.TEntry', padding='1 1 1 1')
 
@@ -166,22 +191,20 @@ class DropdownPopup(ttk.OptionMenu):
 		self.rowid = rowid
 		self.column = column
 
-		super().__init__(parent, self.option_var , text, *options) 
+		super().__init__(parent, textvariable=self.option_var, values=options, state="readonly")
 
-		self.focus_force()
-		self.select_all()
+		self.current(options.index(text)) 
+
+		# self.event_generate('<Button-1>')
+
 		self.bind("<Return>", self.on_return)
-		self.bind("<Control-a>", self.select_all)
 		self.bind("<Escape>", lambda *ignore: self.destroy())
-	
-	def select_all(self, *ignore):
-		''' Set selection on the whole text '''
-
-		# returns 'break' to interrupt default key-bindings
-		return 'break'
+		self.bind('<<ComboboxSelected>>', self.on_return )
+		self.focus_force()
 
 
 	def on_return(self, event):
+
 		rowid = self.tv.focus()
 		vals = self.tv.item(rowid, 'values')
 		vals = list(vals)
@@ -199,29 +222,40 @@ class DropdownPopup(ttk.OptionMenu):
 		self.tv.item(rowid, values=vals)
 		self.destroy()
 
+		self.tv.parent.parent.commit_config()
+		self.tv.parent.profile.analyse_profile()
+		self.tv.parent.generate_info_boxes()
 
 
-class RadioButtonPopup():
-	def __init__(self, parent, x,y, **kw):
+class CheckButtonPopup(ttk.Checkbutton):
+	def __init__(self, parent, rowid, column, x,y, columns, **kw):
 
 		self.parent = parent
+		self.rowid = rowid
+		self.column = column
+		COLUMN_NAMES = columns
 
-		print(self.parent.BeamlinePandaIO.TTLOUT.keys())
-		
-		root = tk.Tk()
-		var = tk.IntVar()
-		R1 = tk.Radiobutton(root, text="Option 1", variable=var, value=1, command=self.sel).grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1)
-		R2 = tk.Radiobutton(root, text="Option 2", variable=var, value=2, command=self.sel).grid(column = 0, row = 1, padx = 5,pady = 5,columnspan=1)
-		R3 = tk.Radiobutton(root, text="Option 3", variable=var, value=3, command=self.sel).grid(column = 0, row = 2, padx = 5,pady = 5,columnspan=1)
-		label = tk.Label(root)
-		label.pack()
+		self.row_num = int(rowid[-2::], 16)-1
 
-		w = 300 # width for the Tk root
-		h = 300 # height for the Tk root
+		w = 420 # width for the Tk root
+		h = 50 # height for the Tk root
+
+		self.root = tk.Toplevel() ##HOLY MOLY - THIS WAS TK.TK AND IT WAS CAUSING SO MANY ISSUES, USE TOPLEVEL WHEN OPENING NEW TEMP WINDOW. IT WAS CUASING THE CHECKBUTTON TO ASSIGN TO SOMETHING ELSE. SEE https://stackoverflow.com/questions/55208876/tkinter-set-and-get-not-working-in-a-window-inside-a-window
+		self.root.minsize(w,h)
+		self.root.title(f"{COLUMN_NAMES[column]} - Group: {self.row_num}")
+
+		vals = self.parent.item(self.rowid, 'values')
+		self.vals = list(vals)
+		self.pulse_vals = self.vals[self.column].split()
+
+		self.option_var = {}
+		self.checkbuttons = {}
+
+		self.create_checkbuttons()
 
 		# get screen width and height
-		ws = root.winfo_screenwidth() # width of the screen
-		hs = root.winfo_screenheight() # height of the screen
+		ws = self.root.winfo_screenwidth() # width of the screen
+		hs = self.root.winfo_screenheight() # height of the screen
 
 		# calculate x and y coordinates for the Tk root window
 		x = (ws/2) - (w/2) + x/2
@@ -229,12 +263,60 @@ class RadioButtonPopup():
 
 		# set the dimensions of the screen 
 		# and where it is placed
-		root.geometry('%dx%d+%d+%d' % (w, h, x, y))
-		root.mainloop()
+		self.root.geometry('%dx%d+%d+%d' % (w, h, x-60, y))
+		self.save_pulse_button = ttk.Button(self.root, text ="Ok", command = self.on_return).grid(column = PULSEBLOCKS, row = 0, padx = 5,pady = 5,columnspan=1, sticky='e')
 
-	def sel(self):
-		selection = "You selected the option " + str(var.get())
-		label.config(text = selection)
+		self.root.protocol("WM_DELETE_WINDOW", self.abort)
+		self.root.bind("<Escape>", lambda *ignore: self.destroy())
+
+	def create_checkbuttons(self):
+
+		for pulse in range(PULSEBLOCKS):
+
+			value = ncdcore.str2bool(str(self.pulse_vals[pulse]))
+			var = tk.IntVar(value=int(value))
+
+			self.option_var[pulse] = var
+
+			CB = tk.Checkbutton(self.root, text=f"Pulse: {pulse}", variable=self.option_var[pulse], command=lambda pulse=pulse: self.toggle(pulse), onvalue=1, offvalue=0)
+			CB.var = self.option_var[pulse]
+			CB.grid(column = pulse, row = 0, padx = 5,pady = 5,columnspan=1)
+
+			self.option_var[pulse].set(1)
+
+			self.checkbuttons[pulse] = CB
+
+			if value == 1:
+				self.checkbuttons[pulse].select()
+			else:
+				self.checkbuttons[pulse].deselect()
+
+	def toggle(self, pulse):
+
+		if self.option_var[pulse].get() == 1:
+			self.option_var[pulse].set(1)
+		else:
+			self.option_var[pulse].set(0)
+
+
+	def abort(self):
+
+		self.root.destroy()
+		del self
+
+	def on_return(self):
+
+		for pulse in range(PULSEBLOCKS):
+			val = str(self.option_var[pulse].get())
+			self.pulse_vals[pulse] = val
+
+		self.pulse_vals = " ".join(self.pulse_vals)
+
+		self.vals[self.column] = self.pulse_vals
+
+		self.parent.item(self.rowid, values=self.vals)
+		self.root.destroy()
+		del self
 
 
 
@@ -268,6 +350,9 @@ class EntryPopup(ttk.Entry):
 			selection = round(float(self.get()))
 		elif self.entrytype == float:
 			selection = float(self.get())
+		elif self.entrytype == list:
+			selection = [str(int((f))) for f  in self.get().split()]
+			selection = ' '.join(selection)
 		else:
 			selection = self.get()
 			
@@ -277,6 +362,11 @@ class EntryPopup(ttk.Entry):
 
 		self.tv.item(rowid, values=vals)
 		self.destroy()
+
+		self.tv.parent.parent.commit_config()
+		self.tv.parent.profile.analyse_profile()
+		self.tv.parent.generate_info_boxes()
+
 
 
 	def select_all(self, *ignore):
@@ -300,19 +390,6 @@ class ProfileTab(ttk.Frame):
 
 		return bool(self.external_inhibit.get())
 
-	def create_in_out_trigger(self):
-
-		ins, outs = [], []
-
-		for f in self.start_label_list:
-			if "\u2191" in f:
-				ins.append(f)
-			elif "\u2193" in f:
-				outs.append(f)
-
-		return ins, outs
-
-
 	def delete_last_groups_button_action(self):
 
 
@@ -330,6 +407,8 @@ class ProfileTab(ttk.Frame):
 			tk.messagebox.showinfo("Info","Select a group to delete")
 
 		for row in rows[::-1]:
+
+			print(row)
 
 			row_str = "0X"+(row.replace("I",''))
 			row_int = (int(row_str,16))-1
@@ -356,8 +435,6 @@ class ProfileTab(ttk.Frame):
 
 	def append_group_button_action(self):
 
-		# row = self.profile_config_tree.selection()[0]
-		# row_int = (int(row.replace("I",'')))-1
 		self.profile.append_group(Group=self.default_group)
 		self.build_profile_tree()
 		self.generate_info_boxes()
@@ -366,40 +443,37 @@ class ProfileTab(ttk.Frame):
 
 	def build_profile_tree(self):
 
-		try:
+		if not hasattr(self, 'profile_config_tree'):
+			self.profile_config_tree = EditableTableview(self, columns=COLUMN_NAMES, show="headings")
+		else:
+			# for line in self.profile_config_tree.get_children():
+			# 	print(line)
+			# 	self.profile_config_tree.delete(line)
 			del self.profile_config_tree
-		except:
-			pass
-		
+			self.profile_config_tree = EditableTableview(self, columns=COLUMN_NAMES, show="headings")
+
 		table_row = 5
-
-		### add tree view ############################################
-		self.profile_config_tree = EditableTableview(self, columns=self.Columns, show="headings")
-
-		widths = [100,100,150,150,150,150,150,150,150,150]
+		widths = [100,100,150,150,150,150,150,150,150]
 
 		#add the columns headers
-		for i, col in enumerate(self.Columns):
+		for i, col in enumerate(COLUMN_NAMES):
 			self.profile_config_tree.heading(i, text=col)
 			self.profile_config_tree.column(i, minwidth=widths[i], width=widths[i], stretch=True, anchor="w")
 
 		# Insert sample data into the Treeview
 		for i in range(len(self.profile.groups)):
-
 			group_dict = (self.profile.groups[i].__dict__)
-			group_list = list(group_dict.values())[0:len(self.Columns)]
-
+			group_list = list(group_dict.values())[0:len(COLUMN_NAMES)]
 			self.profile_config_tree.insert("", "end", values=group_list)
-		self.profile_config_tree.grid(column = 0, row = table_row,padx = 5,pady = 5,columnspan=len(self.Columns),rowspan=5)
+
+		self.profile_config_tree.grid(column = 0, row = table_row,padx = 5,pady = 5,columnspan=len(COLUMN_NAMES),rowspan=5)
 		# self.profile_config_tree.bind("<Double-1>", lambda event: self.onDoubleClick(event))
 
 		verscrlbar = ttk.Scrollbar(self, 
                            orient ="vertical", 
                            command = self.profile_config_tree.yview)
  
-		# Calling pack method w.r.to vertical 
-		# scrollbar
-		verscrlbar.grid(column = 10, row = table_row,padx = 0,pady = 0,columnspan=1,rowspan=5, sticky='ns')
+		verscrlbar.grid(column = len(widths), row = table_row,padx = 0,pady = 0,columnspan=1,rowspan=5, sticky='ns')
 		
 		# Configuring treeview
 		self.profile_config_tree.configure(yscrollcommand = verscrlbar.set)
@@ -409,18 +483,24 @@ class ProfileTab(ttk.Frame):
 
 	def generate_info_boxes(self):
 		try:
-			self.total_frames_label.config(text="")
-			self.total_time_label.config(text="")
-		except:
-			pass
-			
 
-		#### total frames
-		self.total_frames_label = tk.Label(self, text=f"Total Frames: {self.profile.total_frames}")
-		self.total_frames_label.grid(column = 8, row = 1, padx = 5,pady = 5 ,sticky="e" )
-		### total time
-		self.total_time_label = tk.Label(self, text=f"Total time: {np.amax(self.profile.duration):.3f} s")
-		self.total_time_label.grid(column = 8, row = 2, padx = 5,pady = 5 ,sticky="e" )
+			self.total_frames_label.config(text=f"Total Frames: {self.profile.total_frames}")
+			self.total_time_per_cycle.config(text=f"Time/cycle: {self.profile.duration_per_cycle:.3f} s")
+			self.total_time_label.config(text=f"Total time: {self.profile.duration:.3f} s")
+
+		except:
+
+			#### total frames
+			self.total_frames_label = ttk.Label(self, text=f"Total Frames: {self.profile.total_frames}")
+			self.total_frames_label.grid(column = 8, row = 1, padx = 5,pady = 5 ,sticky="e" )
+			
+			self.total_time_per_cycle = ttk.Label(self, text=f"Time/cycle: {np.amax(self.profile.duration_per_cycle):.3f} s")
+			self.total_time_per_cycle.grid(column = 8, row = 2, padx = 5,pady = 5 ,sticky="e" )
+
+			### total time
+
+			self.total_time_label = ttk.Label(self, text=f"Total time: {np.amax(self.profile.duration):.3f} s")
+			self.total_time_label.grid(column = 8, row = 3, padx = 5,pady = 5 ,sticky="e" )
 
 	
 	def edit_config_for_profile(self):
@@ -435,9 +515,9 @@ class ProfileTab(ttk.Frame):
 					value = int(value)
 				elif n_col in [3,5]:
 					value = str(value)
-				elif n_col in [6,7]:
-					value = ncdcore.str2bool(value)
-				elif n_col in [8,9]:
+				elif n_col in [6]:
+					value = str(value)
+				elif n_col in [7,8]:
 					pulses = (value.replace(" ",""))
 					pulses = [int(f) for f in list(pulses)]
 					value = pulses
@@ -445,20 +525,32 @@ class ProfileTab(ttk.Frame):
 				setattr(self.profile.groups[group_id],prop,value)
 
 		cycles = self.get_n_cycles_value()
-		in_trigger = self.get_start_value()
-		out_trigger = self.clicked_output_trigger.get()
+		seq_trigger = self.get_start_value()
+		# out_trigger = self.clicked_output_trigger.get()
 		# inhibit = self.get_inhibit_value()
 
 		setattr(self.profile,"cycles",cycles)
-		setattr(self.profile,"in_trigger",in_trigger)
-		setattr(self.profile,"out_trigger",out_trigger)
+		setattr(self.profile,"seq_trigger",seq_trigger)
+		# setattr(self.profile,"out_trigger",out_trigger)
+		multipliers = [int(var.get()) for var in self.multiplier_var_options]
+		setattr(self.profile,"multipliers",multipliers)
 
 		self.configuration.profiles[self.profile.id] = self.profile
 
 
 	def print_profile_button_action(self):
 
-		self.edit_config_for_profile()
+		
+		self.parent.commit_config()
+		self.profile.analyse_profile()
+		self.generate_info_boxes()
+
+		# self.profile.append_group(Group=self.default_group)
+		# row_int = len(self.profile.groups)-1
+		# self.profile.delete_group(id=row_int)
+
+		self.profile.plot_triggering()
+
 
 		for i in self.profile.groups:
 			print(i)
@@ -466,67 +558,62 @@ class ProfileTab(ttk.Frame):
 	
 	def build_multiplier_choices(self):
 
-		pulse_block_names = ["TetrAMMs/Detectors", "Cam","Fluorescence","User"]
 
 		pulse_column = 5
+
+		self.multiplier_var_options = []
+
+		ttk.Label(self, text ="Multipliers:").grid(column = 2, row = 0, padx = 5,pady = 5 ,sticky="news" )
+
 		
-		for i in range(4): #4 pulse blocks
+		for i in range(PULSEBLOCKS): #4 pulse blocks
 
-			ttk.Label(self, text =pulse_block_names[i]).grid(column =pulse_column, row = i, padx = 5,pady = 5 ,sticky="e" )
+			col_pos = i+3
+
+			ttk.Label(self, text =f"{PULSE_BLOCK_NAMES[i]}:").grid(column = col_pos, row = 0, padx = 5,pady = 5 ,sticky="nsw" )
 			self.multiplier_var = tk.StringVar(value=self.profile.multiplier[i])
-			tk.Entry(self, bd =1, textvariable=self.multiplier_var).grid(column = pulse_column+1, row = i, padx = 5,pady = 5 ,sticky="w" )
+			tk.Entry(self, bd =1, width=10, textvariable=self.multiplier_var).grid(column = col_pos, row = 0, padx = 5,pady = 5 ,sticky="nes" )
+			self.multiplier_var_options.append(self.multiplier_var)
+
+	def commit_and_plot(self):
+
+		# self.edit_config_for_profile()
+		self.parent.commit_config()
+		self.profile.plot_triggering()
 
 
+	def focus_out_generate_info_boxes(event):
+	    
+		self.generate_info_boxes()
 
-
-
-	def __init__(self, notebook, configuration, n_profile, BeamlinePandaIO):
+	def __init__(self, parent, notebook, configuration, n_profile):
 
 		self.notebook = notebook
+		self.parent = parent
+
+
 		self.configuration = configuration
 		self.n_profile = n_profile
 		self.profile = self.configuration.profiles[self.n_profile]
-		self.BeamlinePandaIO = BeamlinePandaIO
 
 		self.seq_table = self.profile.seq_table()
 
 
 		super().__init__(self.notebook,borderwidth=5, relief='raised')
 
-
-		# self.tab = ttk.Frame(self.notebook,borderwidth=5, relief='raised') 
 		self.notebook.add(self, text ='Profile '+str(self.profile.id))
 
+		self.columnconfigure(tuple(range(60)), weight=1)
+		self.rowconfigure(tuple(range(30)), weight=1)
+
 		ttk.Label(self, text ='Profile '+str(self.profile.id)).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
-
-		self.Columns = ["Groups","Frames","Wait Time", "Wait Units", "Run Time", "Run Units", "Wait Pause", "Run Pause", "Wait Pulses", "Run Pulses"]
-
-		# self.start_label_list = ["Software", "\u2191 BM Trigger", "\u2191 ADC chan 0", "\u2191 ADC chan 1",
-		# "\u2191 ADC chan 2", "\u2191 ADC chan 3", "\u2191 ADC chan 4", "\u2191 ADC chan 5", "\u2191 TTL trig 0",
-		# "\u2191 TTL trig 1", "\u2191 TTL trig 2", "\u2191 TTL trig 3", "\u2191 LVDS Lemo ", "\u2191 TFG cable 1",
-		# "\u2191 TFG cable 2", "\u2191 TFG cable 3", "\u2191 Var thrshld", "\u2193 BM Trigger",
-		# "\u2193 ADC chan 0", "\u2193 ADC chan 1", "\u2193 ADC chan 2", "\u2193 ADC chan 3", "\u2193 ADC chan 4",
-		# "\u2193 ADC chan 5", "\u2193 TTL trig 0", "\u2193 TTL trig 1", "\u2193 TTL trig 2", "\u2193 TTL trig 3",
-		# "\u2193 LVDS Lemo", "\u2193 TFG cable 1", "\u2193 TFG cable 2", "\u2193 TFG cable 3",
-		# "\u2193 Var thrshld"]
-
-
-		# self.display_pause = ["Software", "No Pause", "\u2191 BM Trigger", "\u2191 ADC chan 0",
-		# "\u2191 ADC chan 1", "\u2191 ADC chan 2", "\u2191 ADC chan 3", "\u2191 ADC chan 4", "\u2191 ADC chan 5",
-		# "\u2191 TTL trig 0", "\u2191 TTL trig 1", "\u2191 TTL trig 2", "\u2191 TTL trig 3", "\u2191 LVDS Lemo ",
-		# "\u2191 TFG cable 1", "\u2191 TFG cable 2", "\u2191 TFG cable 3", "\u2191 Var thrshld",
-		# "\u2193 BM Trigger", "\u2193 ADC chan 0", "\u2193 ADC chan 1", "\u2193 ADC chan 2", "\u2193 ADC chan 3",
-		# "\u2193 ADC chan 4", "\u2193 ADC chan 5", "\u2193 TTL trig 0", "\u2193 TTL trig 1", "\u2193 TTL trig 2",
-		# "\u2193 TTL trig 3", "\u2193 LVDS Lemo", "\u2193 TFG cable 1", "\u2193 TFG cable 2", "\u2193 TFG cable 3",
-		# "\u2193 Var thrshld"]
-
 
 		self.outputs = self.profile.outputs()
 		self.inputs = self.profile.inputs()
 
 		self.build_multiplier_choices()
 
-		self.default_group = Group(0, 1, 1, "ms", 1, "ms", False, False, [1,0,0,0,0,0,0,0], [1,0,0,0,0,0,0,0])
+		self.default_group = Group(0, 1, 1, "MS", 1, "MS", 'IMMEDIATE', [1,0,0,0], [1,0,0,0])
 
 		# self.ins, self.outs = self.create_in_out_trigger()
 		
@@ -541,92 +628,42 @@ class ProfileTab(ttk.Frame):
 		self.seq_triggers = self.profile.seq_triggers()
 		# self.seq_triggers = [f.lower() for f in self.seq_triggers]
 
-		ttk.Label(self, text ="Seq Trigger").grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="e" )
+		ttk.Label(self, text ="Seq Trigger").grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="e")
 		self.clicked_start_trigger = tk.StringVar()  
-		ttk.OptionMenu(self , self.clicked_start_trigger , self.profile.in_trigger, *self.seq_triggers).grid(column =1, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		ttk.OptionMenu(self , self.clicked_start_trigger , self.profile.seq_trigger, *self.seq_triggers).grid(column =1, row = 0, padx = 5,pady = 5 ,sticky="w" )
 		
-		# self.clicked_start_trigger = tk.StringVar() 
-		# starttrigger_dropdown = ttk.OptionMenu(self.tab , self.clicked_start_trigger , self.start_label_list[0]) 
-		# starttrigger_dropdown.grid(column =1, row = 0, padx = 5,pady = 5 ,sticky="w" )
-		# menu = starttrigger_dropdown["menu"]
-
-
-		# software_sublist = tk.Menu(menu, tearoff=False)
-		# menu.add_cascade(label="software", menu=software_sublist)
-		# software_sublist.add_command(label = "software", command = lambda:self.clicked_start_trigger.set(in_trig))
-
-
-		# ins_sublist = tk.Menu(menu, tearoff=False)
-		# menu.add_cascade(label="ins", menu=ins_sublist)
-		# for in_trig in self.ins:
-		# 	# sublist.add_command(label = in_trig, command = lambda:self.clicked_start_trigge.set())
-		# 	ins_sublist.add_command(label = in_trig, command = lambda:self.clicked_start_trigger.set(in_trig))
-
-
-		# outs_sublist = tk.Menu(menu, tearoff=False)
-		# menu.add_cascade(label="outs", menu=outs_sublist)
-		# for out_trig in self.outs:
-		# 	# sublist.add_command(label = in_trig, command = lambda:self.clicked_start_trigge.set())
-		# 	outs_sublist.add_command(label = out_trig, command = lambda:self.clicked_start_trigger.set(out_trig))
-
-		
-		##### output trigger select
-
-		ttk.Label(self, text ="Output Trigger").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="e" )
-		self.clicked_output_trigger = tk.StringVar() 
-		ttk.OptionMenu(self , self.clicked_output_trigger , self.profile.out_trigger, *self.outputs).grid(column = 1, row = 2,padx = 5,pady = 5,sticky="w" )
-
-		################# external inhibit select
-
-		self.external_inhibit = tk.IntVar() 
-		tk.Checkbutton(self, text = "External Inhibit", 
-						variable = self.external_inhibit, 
-						onvalue = 1, 
-						offvalue = 0, 
-						height = 2, 
-						width = 20) .grid(column = 2, row = 0, padx = 5,pady = 5 ,sticky="w" )
-
 		############# number of cycles box
 
-		############# number of cycles box
-
-		tk.Label(self, text="No. of cycles").grid(column = 3, row = 0, padx = 5,pady = 5 ,sticky="e" )
+		ttk.Label(self, text="No. of cycles").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="e" )
 		self.n_cycles_entry_value = tk.IntVar(self, value=self.profile.cycles)
-		tk.Entry(self, bd =1, textvariable=self.n_cycles_entry_value).grid(column = 4, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		cycles_entry = tk.Entry(self, bd =1, width=15, textvariable=self.n_cycles_entry_value)
+		cycles_entry.grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
+
+		cycles_entry.bind("<FocusOut>", self.focus_out_generate_info_boxes)
+
 
 		############# plot button
-
-		self.plot_profile_button = tk.Button(self, text ="Plot Profile", command = self.profile.plot_triggering).grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='e')
-
 		############# profile info
 
 		self.generate_info_boxes()
 
 		############profile settings
-		self.insertrow_button = tk.Button(self, text ="Insert group", command = self.insert_group_button_action).grid(column = 0, row = 10, padx = 5,pady = 5,columnspan=1, sticky='w')
-		self.appendrow_button = tk.Button(self, text ="Add group", command = self.append_group_button_action).grid(column = 1, row = 10, padx = 5,pady = 5,columnspan=1, sticky='w')
-		self.deleterow_button = tk.Button(self, text ="Delete group", command = self.delete_group_button_action).grid(column = 2, row = 10, padx = 5,pady = 5,columnspan=1, sticky='w')
-		self.deletefinalrow_button = tk.Button(self, text ="Discard group", command = self.delete_last_groups_button_action).grid(column = 2, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
+		self.plot_profile_button = ttk.Button(self, text ="Plot Profile", command = self.commit_and_plot)
+		self.insertrow_button = ttk.Button(self, text ="Insert group", command = self.insert_group_button_action)
+		self.deleterow_button = ttk.Button(self, text ="Delete group", command = self.delete_group_button_action)
+		self.appendrow_button = ttk.Button(self, text ="Add group", command = self.append_group_button_action)
+		self.deletefinalrow_button = ttk.Button(self, text ="Discard group", command = self.delete_last_groups_button_action)
+		self.print_profile_button = ttk.Button(self, text ="Print Profile", command = self.print_profile_button_action)
+		
+		self.plot_profile_button.grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='news')
 
-		self.print_profile_button = tk.Button(self, text ="Print Profile", command = self.print_profile_button_action).grid(column = 5, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
-
-		print(self.BeamlinePandaIO.PulseBlocks)
-
-		for p,n_pulse_block in enumerate(self.BeamlinePandaIO.PulseBlocks.keys()):
-
-			pulse_block_dets = self.BeamlinePandaIO.PulseBlocks[n_pulse_block]
-			
-			for n,n_det in enumerate(pulse_block_dets):
-
-				device_name = self.BeamlinePandaIO.TTLOUT[n_det]
-
-				det_on = tk.IntVar() 
-				tk.Checkbutton(self, text = device_name, 
-								variable = det_on, 
-								onvalue = 1, 
-								offvalue = 0, 
-								height = 2, 
-								width = 20).grid(column = 11+n, row = p*2, padx = 5,pady = 5 ,sticky="w" )
+		self.insertrow_button.grid(column = 0, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.deleterow_button.grid(column = 1, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
+		
+		self.appendrow_button.grid(column = 3, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.deletefinalrow_button.grid(column = 4, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
+		
+		self.plot_profile_button.grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='nes')
 
 
 class PandaConfigBuilderGUI(tk.Tk):
@@ -635,13 +672,15 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		style = ttk.Style(self.window)
 
+		print(style.theme_names())
+
+		style.theme_use(THEME_NAME)
+
 		self.theme_dir = os.path.join(os.path.dirname(os.path.realpath(__file__)),"themes",theme_name+'.tcl')
 
-		self.window.tk.eval(self.theme_dir)
-		self.window.tk.call("package", "require", theme_name)
-		print(style.theme_names())
+		# self.window.tk.eval(self.theme_dir)
+		# self.window.tk.call("package", "require", theme_name)
 		# --> ('awlight', 'clam', 'alt', 'default', 'awdark', 'classic')
-		style.theme_use(theme_name)
 
 	def add_profile_tab(self, event):
 
@@ -657,7 +696,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 			self.configuration.append_profile(profile)
 
-			new_profile_tab = ProfileTab(self.notebook, self.configuration, len(self.configuration.profiles)-1)
+			new_profile_tab = ProfileTab(self, self.notebook, self.configuration, len(self.configuration.profiles)-1)
 
 			self.notebook.add(new_profile_tab, text="Profile " + str(len(self.configuration.profiles)-1))
 
@@ -668,7 +707,10 @@ class PandaConfigBuilderGUI(tk.Tk):
 			for n,tab in enumerate(self.notebook.tabs()[0:-1]):
 				self.notebook.tab(n, text='Profile '+str(n))
 
-			self.delete_profile_button = tk.Button(new_profile_tab, text ="Delete Profile", command = self.delete_profile_tab).grid(column = 4, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
+			self.delete_profile_button = ttk.Button(new_profile_tab, text ="Delete Profile", command = self.delete_profile_tab)
+			self.delete_profile_button.grid(column = 7, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
+
+			self.notebook.select(self.notebook.tabs()[-2])
 
 
 	def delete_profile_tab(self):
@@ -713,6 +755,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		self.configuration.experiment = self.experiment_var.get()
 
+
 	
 
 	def load_config(self):
@@ -745,72 +788,105 @@ class PandaConfigBuilderGUI(tk.Tk):
 	def configure_panda(self):
 
 		self.commit_config()
+		
 		index = self.notebook.index("current")
+
 		profile_to_upload = self.configuration.profiles[index]
-		seq_table = profile_to_upload.seq_table()
-		n_cycles = profile_to_upload.cycles
+		self.seq_table = profile_to_upload.seq_table()
 
-		RE(modify_panda_seq_table(self.panda, seq_table, n_cycles, prescale_unit='us' ,n_seq=1))
+		try:
+			run_upload_yaml_to_panda(beamline='i22')
+		except:
+			print("could not upload yaml to panda")
 
-
-
+		try:
+			run_modify_panda_seq_table('i22', "panda1", self.seq_table, n_seq=1)
+		except:
+			print("could not modify panda seq table")
 
 
 	def open_textedit(self):
 
-		try:
-			os.system("/dls_sw/apps/atom/1.42.0/atom & ")
-		except IOError:
-			os.system("subl & ")
-		except:
-			os.system("gedit & ")
+		if os.path.exists("/dls_sw/apps/atom/1.42.0/atom"):
+			os.system("/dls_sw/apps/atom/1.42.0/atom "+ self.panda_config_yaml + " &")
+		else:
+			try:
+				os.system("subl "+ self.panda_config_yaml + " &")
+			except:
+				os.system("gedit "+ self.panda_config_yaml + " &")
 
 
 	def show_wiring_config(self):
 
+		fig, ax = plt.subplots(1,1, figsize=(16, 8))
+
+		labels= ["TTLIN", "LVDSIN","TTLOUT", "LVDSOUT"]
+
 		for key in self.BeamlinePandaIO.TTLIN.keys():
 			INDev = self.BeamlinePandaIO.TTLIN[key]
 
-			plt.scatter(0, key, color='k',s=50)
-			plt.text(0+0.1, key, INDev)
+			ax.scatter(0, key, color='k',s=50)
+			ax.text(0+0.1, key, INDev)
+
+		for key in self.BeamlinePandaIO.LVDSIN.keys():
+			LVDSINDev = self.BeamlinePandaIO.LVDSIN[key]
+
+			ax.scatter(1, key, color='k',s=50)
+			ax.text(1+0.1, key, LVDSINDev)
 
 		for key in self.BeamlinePandaIO.TTLOUT.keys():
-			OUTDev = self.BeamlinePandaIO.TTLOUT[key]
+			TTLOUTDev = self.BeamlinePandaIO.TTLOUT[key]
 
-			plt.scatter(1, key, color='b',s=50)
-			plt.text(1+0.1, key, OUTDev)
+			ax.scatter(2, key, color='b',s=50)
+			ax.text(2+0.1, key, TTLOUTDev)
 
-		plt.ylabel("TTL I/O Connection")
-		plt.grid()
-		plt.xlim(-0.2,2)
+		for key in self.BeamlinePandaIO.LVDSOUT.keys():
+			LVDSOUTDev = self.BeamlinePandaIO.LVDSOUT[key]
+			ax.scatter(3, key, color='b',s=50)
+			ax.text(3+0.1, key, LVDSOUTDev)
+
+		ax.set_ylabel("I/O Connections")
+		ax.grid()
+		ax.set_xlim(-0.2,4)
+		plt.gca().invert_yaxis()
+		ax.set_xticks(range(len(labels)))
+		ax.set_xticklabels(labels, rotation=90)
 		plt.show()
 
 	def run_experiment(self):
 
 		print(np.random.random())
 
-		run_arm(beamline, device_name)
-
-
 	def build_exp_run_frame(self):
 		
 		self.run_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
 		self.run_frame.pack(fill ="both",expand=True, side="right")
-		self.run_button = tk.Button(self.run_frame, text ="Run Sequence", command = self.run_experiment).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.run_button = ttk.Button(self.run_frame, text ="Run Sequence", command = self.run_experiment).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
 
 
 	def build_global_settings_frame(self):
 
 		self.global_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
-		self.global_settings_frame.pack(fill ="both",expand=True, side="left")
+		self.global_settings_frame.pack(fill ="both",expand=True, side="bottom")
 
 		#add a load/save/configure button
-		self.load_button = tk.Button(self.global_settings_frame, text ="Load", command = self.load_config).grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		self.save_button = tk.Button(self.global_settings_frame, text ="Save", command = self.save_config).grid(column = 1, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		self.configure_button = tk.Button(self.global_settings_frame, text ="Upload to PandA", command = self.configure_panda).grid(column =2, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		self.load_button = ttk.Button(self.global_settings_frame, text ="Load", command = self.load_config)
+		self.save_button = ttk.Button(self.global_settings_frame, text ="Save", command = self.save_config)
+		self.configure_button = ttk.Button(self.global_settings_frame, text ="Upload to PandA", command = self.configure_panda)
+		self.show_wiring_config_button = ttk.Button(self.global_settings_frame, text ="Wiring config", command = self.show_wiring_config)
+		self.Opentextbutton = ttk.Button(self.global_settings_frame, text ="Open Text Editor", command = self.open_textedit)
 
-		self.show_wiring_config_button = tk.Button(self.global_settings_frame, text ="Wiring config", command = self.show_wiring_config).grid(column = 4, row = 0, padx = 5,pady = 5,columnspan=1)
-		self.Opentextbutton = tk.Button(self.global_settings_frame, text ="Open Text Editor", command = self.open_textedit).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1)
+		# self.load_button.grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		# self.save_button.grid(column = 1, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		# self.configure_button.grid(column =2, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
+		# self.show_wiring_config_button.grid(column = 4, row = 0, padx = 5,pady = 5,columnspan=1)
+		# self.Opentextbutton.grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1)
+
+		self.load_button.pack(fill ="both",expand=True, side="left")
+		self.save_button.pack(fill ="both",expand=True, side="left")
+		self.configure_button.pack(fill ="both",expand=True, side="left")
+		self.show_wiring_config_button.pack(fill ="both",expand=True, side="left")
+		self.Opentextbutton.pack(fill ="both",expand=True, side="left")
 
 
 	def build_add_frame(self):
@@ -823,16 +899,58 @@ class PandaConfigBuilderGUI(tk.Tk):
 	def build_exp_info_frame(self):
 
 		self.experiment_settings_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
-		self.experiment_settings_frame.pack(fill ="both",expand=True, side="left",anchor="w")
+		self.experiment_settings_frame.pack(fill ="both",expand=True, side="bottom",anchor="w")
 
 		self.experiment_var = tk.StringVar(value=self.configuration.experiment)
-		tk.Label(self.experiment_settings_frame, text ="Instrument: "+self.configuration.instrument.upper()).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
-		tk.Label(self.experiment_settings_frame, text ="Experiment:").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="w" )
+		ttk.Label(self.experiment_settings_frame, text ="Instrument: "+self.configuration.instrument.upper()).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		ttk.Label(self.experiment_settings_frame, text ="Experiment:").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="w" )
 		tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_var).grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
 		
 		# self.experiment_dir = tk.StringVar(value=self.configuration.data_dir)
-		# tk.Label(self.experiment_settings_frame, text ="Save dir:").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="w" )
+		# ttk.Label(self.experiment_settings_frame, text ="Save dir:").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="w" )
 		# tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_dir, width=30).grid(column = 1, row = 2, padx = 5,pady = 5 ,sticky="w" )
+
+
+	def build_active_detectors_frame(self):
+
+		self.active_detectors_frames = {}
+
+		for pulse in range(PULSEBLOCKS):
+
+			active_detectors_frame_n = ttk.Frame(self.pulse_frame,borderwidth=5, relief='raised')
+			active_detectors_frame_n.pack(fill ="both",expand=True, side="left",anchor="w")
+
+
+			Pulselabel = ttk.Label(active_detectors_frame_n, text =f"Pulse Block: {pulse+1}")
+			Pulselabel.grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
+
+			# if pulse == 0:
+			TTLLabel = ttk.Label(active_detectors_frame_n, text =f"TTL:")
+			TTLLabel.grid(column =0, row = 1, padx = 5,pady = 5 ,sticky="w" )
+
+			for n, det in enumerate(self.BeamlinePandaIO.PulseBlocks[pulse+1]["TTLOUT"]):
+
+				det_name = self.BeamlinePandaIO.TTLOUT[det]
+
+				Outlabel = ttk.Label(active_detectors_frame_n, text =f"Out: {det}")
+				Outlabel.grid(column =n+1, row = 0, padx = 5,pady = 5 ,sticky="w" )
+
+				experiment_var = tk.StringVar(value=self.configuration.experiment)
+
+				if (det_name.lower() == "fs") or ("shutter" in det_name.lower()):
+					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det_name, state='disabled')
+					ad_entry.select()
+				else:
+					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det_name)
+
+				ad_entry.grid(column = n+1, row = 1, padx = 5,pady = 5 ,sticky="w" )
+
+	def build_pulse_frame(self):
+
+		self.pulse_frame = ttk.Frame(self.window, borderwidth=5, relief='raised')
+		self.pulse_frame.pack(fill ="both",side='left',expand=True)
+		Outlabel = ttk.Label(self.pulse_frame, text =f"Enable Device")
+		Outlabel.pack(fill ="both",side='top',expand=True)
 
 
 	def __init__(self,panda_config_yaml=None):
@@ -865,39 +983,66 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.BeamlinePandaIO = PandaIO(self.default_ioconfig)
 
 		self.profiles = self.configuration.profiles
+
+
+		# from tkinter import ttk  # Normal Tkinter.* widgets are not themed!
+		# from ttkthemes import ThemedTk
+
+		# self.window = ThemedTk(theme="arc")
 		
 		self.window = tk.Tk()
 		self.window.resizable(1,1)
 		self.window.minsize(600,200)
+		self.theme("clam")
+
+		# style = ttk.Style()
+		# style.configure("BW.TLabel", foreground="blue", background="black")
+
+		# self.window.tk.call("source", "azure.tcl")
+		# self.window.tk.call("set_theme", "light")
+
+		# theme_name = "awdark"
+
+		# style = ttk.Style()
+		# self.windo.tk.call('lappend', 'auto_path', './theme')
+		# self.window.tk.call('package', 'require', 'awthemes')
+		# self.window.tk.call('::themeutils::setHighlightColor', 'awdark', '#007000')
+		# self.window.tk.call('package', 'require', 'awdark')
+		# style.theme_use('awdark')
+
+
 
 		self.build_exp_run_frame()
 
 
-
-		self.window.title("Panda Config") 
+		self.window.title("PandA Config") 
 		self.notebook = ttk.Notebook(self.window)
-		self.notebook.pack(fill ="both",expand=True)
+		self.notebook.pack(fill ="both",side='top',expand=True)
+
+
 
 		for i in range(self.configuration.n_profiles):
 
-			ProfileTab(self.notebook, self.configuration, i, self.BeamlinePandaIO)
+			ProfileTab(self, self.notebook, self.configuration, i)
 			tab_names = self.notebook.tabs()
 			proftab_object = self.notebook.nametowidget(tab_names[i])
-			self.delete_profile_button = tk.Button(proftab_object, text ="Delete Profile", command = self.delete_profile_tab).grid(column = 4, row = 10, padx = 5,pady = 5,columnspan=1, sticky='e')
+			self.delete_profile_button = ttk.Button(proftab_object, text ="Delete Profile", command = self.delete_profile_tab)
+			self.delete_profile_button.grid(column = 7, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
 
-	
+
 		########################################################
 		self.build_exp_info_frame()
 		######## #settings and buttons that apply to all profiles
 		self.build_global_settings_frame()
+
+		self.build_pulse_frame()
+		self.build_active_detectors_frame()
+
+
+
 		self.build_add_frame()
 		#################################################################
 
-
-		
-		print("Uncomment this when you want to actually upload the panda interface")
-		# run_upload_yaml_to_panda(beamline='i22')
-		# print("upload complete")
 
 		self.window.mainloop()
 

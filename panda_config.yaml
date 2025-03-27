@@ -1,103 +1,161 @@
 ---
 title: "Panda Configure"
 experiment: "cm37271-5"
-year: 2025
-user: "Dixey"
 instrument: "i22"
-detector_config:
-
-detector_config:
-  detectors: ["saxs", "waxs"]
-  saxs:
-    detector: "Rapid2D"
-    pixels: 512
-    rasters: 512
-  waxs:
-    detector: "HotWaxs"
-    pixels: 512
-    rasters: 1
-
+detectors: ["saxs", "waxs"]
 
 profile-0:
-  start_method: 0
-  cycles: 1
-  in_trigger: "BITA_0"
+  cycles: 3
+  seq_trigger: "IMMEDIATE"
   out_trigger: "TTLOUT1"
-  multiplier: [1, 1, 1, 1, 1] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
+  multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
 
 
   group-0:
     frames: 1
-    wait_time: 1
-    wait_units: "s"
-    run_time: 1
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [1, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    wait_time: 3000
+    wait_units: "MS"
+    run_time: 3000
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [1, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0]
 
   group-1:
     frames: 1
-    wait_time: 1
-    wait_units: "s"
-    run_time: 1
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    wait_time: 1000
+    wait_units: "MS"
+    run_time: 1000
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 0, 0]
 
   group-2:
-    frames: 3
-    wait_time: 1
-    wait_units: "s"
-    run_time: 1
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    frames: 8
+    wait_time: 1000
+    wait_units: "MS"
+    run_time: 1000
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0]
 
   group-3:
     frames: 1
-    wait_time: 1
-    wait_units: "s"
-    run_time: 3
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    wait_time: 1000
+    wait_units: "MS"
+    run_time: 3000
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 0, 0, 0]
   
   group-5:
     frames: 1
-    wait_time: 1
-    wait_units: "s"
-    run_time: 1
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    wait_time: 3000
+    wait_units: "MS"
+    run_time: 1000
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [0, 0, 0, 0]
 
 
 
 
 profile-1:
-  start_method: 1
   cycles: 1
-  in_trigger: "POSC_LT"
+  seq_trigger: "IMMEDIATE"
   out_trigger: "TTLOUT2"
-  multiplier: [1, 2, 4, 8, 16] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
+  multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
 
   group-0:
     frames: 1
     wait_time: 1
-    wait_units: "s"
-    run_time: 3
-    run_units: "s"
-    wait_pause: false
-    run_pause: false
-    wait_pulses: [0, 0, 0, 0, 0, 0, 0, 0]
-    run_pulses: [1, 1, 0, 0, 0, 0, 0, 0]
+    wait_units: "S"
+    run_time: 1
+    run_units: "S"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 1, 1]
+
+
+######################################################################################
+
+
+#this is the Linkam3 Profile. Just go to temperature, trigger. Rinse and repeat
+profile-2:
+  cycles: 1
+  seq_trigger: "IMMEDIATE"
+  out_trigger: False
+  multiplier: [1, 1, 1, 1]
+
+  group-0:
+    frames: 100
+    wait_time: 0
+    wait_units: "S"
+    run_time: 1
+    run_units: "S"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 1, 1]
+
+  
+
+#this is the StopFlow Profile - Remote Triggered by Windows Stopflow machine
+profile-3:
+  cycles: 1
+  seq_trigger: "TTL1IN"
+  out_trigger: False
+  multiplier: [1, 2, 4, 8]
+
+  group-0:
+    frames: 100
+    wait_time: 0
+    wait_units: "S"
+    run_time: 1
+    run_units: "S"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 1, 1]
+
+
+#this is the PressureJump Profile, needs an our trigger to trigger P jump and collect frames
+#using pulseblock 4 as the trigger of the pressure jump cell
+
+profile-4:
+  cycles: 1
+  seq_trigger: "IMMEDIATE"
+  out_trigger: False
+  multiplier: [1, 2, 4, 8]
+
+  group-0:
+    frames: 5
+    wait_time: 0
+    wait_units: "MS"
+    run_time: 1
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 0, 0]
+
+  group-1:
+    frames: 500
+    wait_time: 0
+    wait_units: "MS"
+    run_time: 5
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 0, 1]
+
+  group-2:
+    frames: 500
+    wait_time: 0
+    wait_units: "MS"
+    run_time: 5
+    run_units: "MS"
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 0, 1]

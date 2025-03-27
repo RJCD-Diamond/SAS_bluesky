@@ -10,6 +10,10 @@ from bluesky.run_engine import RunEngine
 from bluesky.utils import MsgGenerator
 import bluesky.plan_stubs as bps
 
+# from bluesky.plans import fly
+
+from ophyd_async.plan_stubs._wait_for_awaitable import wait_for_awaitable
+
 from ophyd_async.core import (
     DetectorTrigger,
     StandardDetector,
@@ -32,18 +36,21 @@ from ophyd_async.plan_stubs import (apply_panda_settings,
 									store_settings,
 									ensure_connected)
 
-from ophyd_async.plan_stubs import (
-    fly_and_collect,
-)
 
-from ophyd_async.epics.adpilatus import PilatusTriggerMode
+from ophyd_async.epics.adpilatus import PilatusDetector, PilatusTriggerMode
 
 # from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 
+from dodal.devices.tetramm import TetrammDetector
+from dodal.devices.oav.oav_detector import OAV
+
+from dodal.devices.areadetector.plugins.CAM import ColorMode
+from dodal.devices.oav.oav_parameters import OAVParameters
 
 from dodal.beamlines import module_name_for_beamline
 from dodal.utils import make_device, make_all_devices
 from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
+
 
 from dodal.common.beamlines.beamline_utils import (
     get_path_provider,
@@ -59,9 +66,9 @@ from ProfileGroups import (Profile,
 #: Buffer added to deadtime to handle minor discrepencies between detector
 #: and panda clocks
 DEADTIME_BUFFER = 20e-6
-DEFAULT_SEQ = 1 
-PULSEBLOCK = 4
-GENERAL_TIMEOUT = 1
+DEFAULT_SEQ = 1 #default sequencer is this one, pandas can have 2
+PULSEBLOCKS = 4 #number of pulseblocks available for the panda, for standard panda this is 4
+GENERAL_TIMEOUT = 30 #seconds before each wait times out
 
 
 RE = RunEngine(call_returns_result=True) 
@@ -132,7 +139,12 @@ def set_panda_directory(panda_directory: Path) -> MsgGenerator:
     yield from bps.wait_for([set_panda_dir])
 
 
+def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
 
+    provider = YamlSettingsProvider(yaml_directory)
+    settings = yield from wait_for_awaitable(provider.retrieve(yaml_file_name))
+
+    return settings
 
 def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> None:
 
@@ -148,7 +160,6 @@ def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPan
     settings = yield from retrieve_settings(provider, yaml_file_name, panda)
     yield from apply_panda_settings(settings)
 	
-
 
 def save_device_to_yaml(yaml_directory: str, yaml_file_name: str, device) -> MsgGenerator:
 
@@ -276,8 +287,49 @@ def disable_sequencer(panda: HDFPanda, n_seq: int = 1,  wait: bool = False, grou
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
+def setup_oav(oav: OAV,  parameters: OAVParameters, group="oav_setup"):
 
-def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: Profile, panda: HDFPanda, n_seq = 1, group="det_atm"):
+    yield from bps.abs_set(oav.cam.color_mode, ColorMode.RGB1, group=group)
+    yield from bps.abs_set(oav.cam.acquire_period, parameters.acquire_period, group=group)
+    yield from bps.abs_set(oav.cam.acquire_time, parameters.exposure, group=group)
+    yield from bps.abs_set(oav.cam.gain, parameters.gain, group=group)
+
+    # zoom_level_str = f"{float(parameters.zoom)}x"
+    # yield from bps.abs_set(
+    #     oav.zoom_controller,
+    #     zoom_level_str,
+    #     wait=True,
+    # )
+
+def setup_pilatus(pilatus: PilatusDetector, trigger_info: TriggerInfo, group="setup_pilatus"):
+
+    yield from bps.stage(pilatus, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
+    yield from bps.prepare(pilatus, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
+
+
+# def setup_pilatus_trigger(saxs):
+
+#     """
+    
+#     IF HDF capture is set to stream, and lazy and capture is on,  
+
+#     If acquire is on then it will accept the number of triggers before dumping data.
+    
+#     """
+        
+#     # trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
+#     yield from bps.abs_set(saxs.driver.trigger_mode, PilatusTriggerMode.EXT_TRIGGER)
+
+#     print(saxs.driver)
+#     # yield from bps.abs_set(saxs.driver.armed, "Armed")
+#     # BL22I-EA-PILAT-01:CAM:Acquire
+#     armed = yield from bps.rd(saxs.driver.armed)
+#     trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
+    
+#     desc = saxs._metadata_holder.description
+
+
+def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, table_info: SeqTableInfo, trigger_info: TriggerInfo, panda: HDFPanda, group="det_atm"):
 
     """
     
@@ -285,48 +337,27 @@ def prepare_and_stage_detectors(detectors: list, max_deadtime: float,  profile: 
     
     """
 
-    n_cycles = profile.cycles
-    seq_table = profile.seq_table()
-    n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
-    duration = profile.duration
+    yield from bps.stage_all(*detectors, flyer, group=group)
+    yield from bps.prepare(flyer, table_info, wait=False, group=group)
 
-    # ###setup triggering of detectors
-    table_info = SeqTableInfo(sequence_table=seq_table, repeats=n_cycles)
+    # yield from bps.declare_stream(*detectors, name='hardware_triggered', collect=True)
 
-    # for pulse in PULSEBLOCKS
-    #   get the pulse block, find out what is attached to it
-    #   set the multiplier and possibly duration accordingly
-    #   trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-    #                              trigger=DetectorTrigger.CONSTANT_GATE, 
-    #                              deadtime=max_deadtime,
-    #                              multiplier=1,
-    #                              frame_timeout=None)
-        
-    trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-                            trigger=DetectorTrigger.CONSTANT_GATE, 
-                            deadtime=max_deadtime,
-                            livetime=duration,
-                            multiplier=1,
-                            frame_timeout=None)
-
-
-    flyer = StandardFlyer(StaticSeqTableTriggerLogic(panda.seq[n_seq])) #flyer and prepare fly, sets the sequencers table
+    # for det in detectors:
+    #     yield from bps.stage(det, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
+    #     yield from bps.prepare(det, trigger_info, group=group, wait=False) ###this tells the detector how may triggers to expect and sets the CAN aquire on
+    #     # if "tetramm" in str(type(det)).lower(): pilatus oav
+    #     #     yield from bps.collect(det)
 
     for det in detectors:
+        # yield from bps.stage(det, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
+        if isinstance(det, TetrammDetector):
+            print("Tetramm is currently freezing it, and won't be used")
+            yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
 
-        if 'Tetramm' in str(type(det)):
-            print("Tetramm is currently freezing it")
-            continue
+        else:
+            yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
 
-        yield from bps.stage(det, group=group,wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
-        yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
-
-
-    # yield from bps.prepare(panda, trigger_info, wait=True, group=group)
-    yield from bps.prepare(flyer, table_info, wait=True, group=group)
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
-
-    return flyer
 
 
 
@@ -379,12 +410,44 @@ async def update_path():
     return path_provider
 
 
+@AsyncStatus.wrap
+async def return_run_number():
+
+    path_provider = get_path_provider()
+    run = await path_provider.data_session()
+
+    return run
+
+def generate_repeated_trigger_info(profile: Profile, max_deadtime: float, livetime: float, trigger = DetectorTrigger.CONSTANT_GATE):
+
+    repeated_trigger_info = []
+
+    n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
+    n_cycles = profile.cycles
+
+
+    for pulse_block, multiplier in enumerate(profile.multiplier):
+
+        trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+                                trigger=trigger, 
+                                deadtime=max_deadtime,
+                                livetime=duration,
+                                multiplier=multiplier,
+                                frame_timeout=None)
+
+        repeated_trigger_info.append(trigger_info)
+
+
+
 # @attach_data_session_metadata_wrapper
-def setup_panda(beamline: str, experiment: str, profile: Profile, active_detector_names: list = ["saxs","it"], panda_name="panda1", force_load=True) -> MsgGenerator:
+def setup_panda(beamline: str, experiment: str, profile: Profile, active_detector_names: list = ["saxs","waxs"], panda_name="panda1", force_load=True) -> MsgGenerator:
+
+    TRIGGER_METHOD = 'Fly' #"MANUAL"
+
 
     yield from bps.open_run()
     
-    visit_path = os.path.join("/dls/i22/data",str(datetime.now().year),experiment)
+    visit_path = os.path.join("/dls/i22/data",str(datetime.now().year), experiment)
     print(f"Data will be saved in {visit_path}")
 
     set_path_provider(
@@ -397,18 +460,30 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
 
     yield from set_panda_directory(visit_path)
 
+
+    # run_number =  return_run_number()
+    # print(run_number)
+
+
     CONFIG_NAME = 'PandaTrigger'
 
     beamline_devices = make_beamline_devices(beamline)
     panda = beamline_devices[panda_name]
     yield from ensure_connected(panda)
 
-    for available_det in beamline_devices:
-        print(available_det)
+    # for available_det in beamline_devices:
+    #     print(available_det)
 
+    ####################
+
+    # v CHECK TO SEE IF THIS CAN BE PERFORMED IN A SMARTER WAY v
 
     active_detectors = tuple([beamline_devices[det_name] for det_name in active_detector_names]) ###must be a tuple to be hashable and therefore work with bps.stage_all or whatever
     # active_detectors = active_detectors + (panda,)
+    
+    ######################3
+
+    # yield from bps.declare_stream(*active_detectors, name="main_stream", collect=True)
 
     print("\n",active_detectors,"\n")
 
@@ -436,96 +511,117 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
     # yield from modify_panda_seq_table(panda, profile, n_seq=DEFAULT_SEQ) #this actually isn't require if a seq table flyer is applied
     active_pulses = profile.active_out+1 #because python counts from 0, but panda coutns from 1
     ###########################
-    # #arm the panda
+    # #arm the panda pulses
     yield from arm_panda_pulses(panda=panda, pulses=active_pulses)
     ###change the sequence table
+
+
+    n_cycles = profile.cycles
+    seq_table = profile.seq_table()
+    n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
+    duration = profile.duration
+
+    ############################################################
+
+    # ###setup triggering of detectors
+    table_info = SeqTableInfo(sequence_table=seq_table, repeats=n_cycles)
+
+    # for pulse in PULSEBLOCKS
+    #   get the pulse block, find out what is attached to it
+    #   set the multiplier and possibly duration accordingly
+    #   for det in detectors_on_pulse_block:
+    #       trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+    #                                   trigger=DetectorTrigger.CONSTANT_GATE, 
+    #                                  deadtime=max_deadtime,
+    #                                  multiplier=1,
+    #                                 frame_timeout=None)
+
     #set up trigger info etc
-    flyer = yield from prepare_and_stage_detectors(active_detectors, max_deadtime, profile, panda)
+    trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+                            trigger=DetectorTrigger.CONSTANT_GATE, 
+                            deadtime=max_deadtime,
+                            livetime=duration,
+                            multiplier=1,
+                            frame_timeout=None)
+
+    ############################################################
+
+    trigger_logic = StaticSeqTableTriggerLogic(panda.seq[DEFAULT_SEQ]) #flyer and prepare fly, sets the sequencers table
+    flyer = StandardFlyer(trigger_logic) #flyer and prepare fly, sets the sequencers table
+    # flyer = StandardFlyer(StaticSeqTableTriggerLogic(panda.seq[n_seq])) #flyer and prepare fly, sets the sequencers table
 
 
-    hdf = yield from bps.rd(panda.data.hdf_directory)
-    print(hdf)
-
-    ###########################
-
-    # yield from fly_and_collect(
-    #     stream_name='primary',
-    #     detectors=active_detectors,
-    #     flyer=flyer,
-    # )
+    ####stage the detectors, the flyer, the panda
+    yield from stage_and_prepare_detectors(active_detectors, flyer, table_info, trigger_info, panda)
 
 
-    
-    ###########################
-    ###########################
-    #arm the detectors we want to use
-    yield from start_sequencer(panda=panda, n_seq=DEFAULT_SEQ)
-    ###########################
-    ###########################
+    if TRIGGER_METHOD == 'MANUAL':
+        yield from start_sequencer(panda=panda, n_seq=DEFAULT_SEQ)
+        yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
+        # yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False, GENERAL_TIMEOUT) #only use this while testing and things keep freezing
+
+    else:
+
+        ###########################
+        yield from fly_and_collect(
+            stream_name='primary',
+            detectors=active_detectors,
+            flyer=flyer,
+        )
+        ##########################
 
 
-
-    ###########################
-    ###########################
-    #wait for the sequencer table to finish before continuing
-    yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False, GENERAL_TIMEOUT)
-    ###########################
-    ###########################
-
+    # dev_name = 'i0'
+    # yield from save_device_to_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name=f"{dev_name}_pv", device=active_detectors[1])
 
     ###########################
     ####start diabling and unstaging everything
     ####
-    yield from disable_sequencer(panda=panda, n_seq=DEFAULT_SEQ, wait=True)
+    # yield from disable_sequencer(panda=panda, n_seq=DEFAULT_SEQ, wait=True) #this can be performed by unstage flyer
     yield from disarm_panda_pulses(panda=panda, pulses=active_pulses) #start set to false because currently don't actually want to collect data
-    yield from bps.unstage_all(active_detectors)  #stops the hdf capture mode
+    yield from bps.unstage_all(*active_detectors, flyer)  #stops the hdf capture mode
+    ###########################
+    ###########################
+
     yield from bps.close_run()
-    ###########################
-    ###########################
-
-
-def setup_pilatus_trigger(saxs):
-
-    """
-    
-    IF HDF capture is set to stream, and lazy and capture is on,  
-
-    If acquire is on then it will accept the number of triggers before dumping data.
-    
-    """
-        
-    # trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
-    yield from bps.abs_set(saxs.driver.trigger_mode, PilatusTriggerMode.EXT_TRIGGER)
-
-    print(saxs.driver)
-    # yield from bps.abs_set(saxs.driver.armed, "Armed")
-    # BL22I-EA-PILAT-01:CAM:Acquire
-    armed = yield from bps.rd(saxs.driver.armed)
-    trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
-    
-    desc = saxs._metadata_holder.description
-
 
 
 
 
 if __name__ == "__main__":
 
-
-
     # # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
-    profile = configuration.profiles[0]
-    seq_table = profile.seq_table()
-    cycles = profile.cycles
+    profile = configuration.profiles[1]
+
+    # RE(setup_panda("i22", "cm40643-2/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
+
+    def quickthing():
+        
+        settings = yield from load_settings_from_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name="i22_PandaTrigger_panda1")
+        print(settings["seq.1.enable"])
+
+        settings["seq.1.enable"] = "ONE"
+
+
+        print(settings["seq.1.enable"])
+
+        print(type(settings))
+
+        for x in settings:
+            print(x, settings[x])
+
+
+    RE(quickthing())
 
 
 
 
-
-    RE(setup_panda("i22", "cm40643-2/bluesky", profile, force_load=False))
+    # connected_dev = return_connected_device('i22',dev_name)
+    # print(f"{connected_dev=}")
+    # RE(save_device_to_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name=f"{dev_name}_pv", device=connected_dev))
 
 
 
