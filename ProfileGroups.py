@@ -50,7 +50,7 @@ time_units = {"ns": 1e-9, "nsec": 1e-9, "usec": 1e-6, "ms": 1e-3, "msec": 1e-3,
 @dataclass
 class Group():
 
-	id: int
+	group_id: int
 	frames: int
 	wait_time: int
 	wait_units: str
@@ -111,7 +111,7 @@ class Group():
 @dataclass
 class Profile():
 	
-	id: int
+	group_id: int
 	cycles: int
 	seq_trigger: str
 	out_trigger: str
@@ -124,13 +124,13 @@ class Profile():
 
 			self.analyse_profile()
 
-	def re_id_groups(self):
+	def re_group_id_groups(self):
 		
 		iter_group = copy.deepcopy(self.groups)
 		new_groups = []
 
 		for n, group in enumerate(iter_group):
-			group.id = n
+			group.group_id = n
 			new_groups.append(group)
 
 		self.groups = new_groups
@@ -171,24 +171,24 @@ class Profile():
 	def append_group(self, Group, analyse_profile=True):
 
 		self.groups.append(Group)
-		self.re_id_groups()
+		self.re_group_id_groups()
 
 		if analyse_profile:
 			self.analyse_profile()
 
 	
-	def delete_group(self, id, analyse_profile=True):
+	def delete_group(self, group_id, analyse_profile=True):
 
-		self.groups.pop(id)
-		self.re_id_groups()
+		self.groups.pop(group_id)
+		self.re_group_id_groups()
 
 		if analyse_profile:
 			self.analyse_profile()
 
-	def insert_group(self, id, Group, analyse_profile=True):
+	def insert_group(self, group_id, Group, analyse_profile=True):
 
-		self.groups.insert(id, Group)
-		self.re_id_groups()
+		self.groups.insert(group_id, Group)
+		self.re_group_id_groups()
 
 		
 		if analyse_profile:
@@ -397,8 +397,10 @@ class PandaTriggerConfig():
 			else:
 				year = config["year"]
 
-			profile_names = [f for f in config if f.startswith("profile")]
 
+			print(config["BITA"]["IN"])
+
+			profile_names = [f for f in config if f.startswith("profile")]
 			profiles = []
 
 			for p,profile_name in enumerate(profile_names):
@@ -421,10 +423,10 @@ class PandaTriggerConfig():
 
 
 				# if not out_trigger in Profile.outputs():
-				# 	print("Not a valid out trigger")
+				# 	print("Not a valgroup_id out trigger")
 				# 	quit()
 				# if not profile_trigger in Profile.seq_triggers():
-				# 	print("Not a valid in trigger")
+				# 	print("Not a valgroup_id in trigger")
 				# 	quit()
 
 				n_profile = Profile(p, profile_cycles, profile_trigger, out_trigger, group_list, multiplier)
@@ -471,22 +473,22 @@ class PandaTriggerConfig():
 	def delete_profile(self, n):
 
 		self.profiles.pop(n)
-		self.re_id_profiles()
+		self.re_group_id_profiles()
 		self.__post_init__()
 
 	def append_profile(self, Profile):
 
 		self.profiles.append(Profile)
-		self.re_id_profiles()
+		self.re_group_id_profiles()
 		self.__post_init__()
 
-	def re_id_profiles(self):
+	def re_group_id_profiles(self):
 		
 		iter_prof = copy.deepcopy(self.profiles)
 		new_profiles = []
 
 		for n, profile in enumerate(iter_prof):
-			profile.id = n
+			profile.group_id = n
 			new_profiles.append(profile)
 
 		self.profiles = new_profiles
@@ -557,7 +559,7 @@ if __name__ == "__main__":
     #     wait=True,
     # )
 
-	    # yield from bps.abs_set(panda.pulse[1].width, exposure_time_s, group="panda-config")
+	    # yield from bps.abs_set(panda.pulse[1].wgroup_idth, exposure_time_s, group="panda-config")
 
 
     # table = _get_seq_table(parameters, exposure_distance_mm, time_between_x_steps_ms)
@@ -571,7 +573,7 @@ if __name__ == "__main__":
     # )
 
 
-# def arm_panda_for_gridscan(panda: HDFPanda, group="arm_panda_gridscan"):
+# def arm_panda_for_grgroup_idscan(panda: HDFPanda, group="arm_panda_grgroup_idscan"):
 #     yield from bps.abs_set(panda.seq[1].enable, Enabled.ENABLED.value, group=group)  # type: ignore
 #     yield from bps.abs_set(panda.pulse[1].enable, Enabled.ENABLED.value, group=group)  # type: ignore
 #     yield from bps.abs_set(panda.counter[1].enable, Enabled.ENABLED.value, group=group)  # type: ignore
@@ -580,7 +582,7 @@ if __name__ == "__main__":
 #     LOGGER.info("PandA has been armed")
 
 
-# def disarm_panda_for_gridscan(panda, group="disarm_panda_gridscan") -> MsgGenerator:
+# def disarm_panda_for_grgroup_idscan(panda, group="disarm_panda_grgroup_idscan") -> MsgGenerator:
 #     yield from bps.abs_set(panda.pcap.arm, PcapArm.DISARMED.value, group=group)  # type: ignore
 #     yield from bps.abs_set(panda.counter[1].enable, Enabled.DISABLED.value, group=group)  # type: ignore
 #     yield from bps.abs_set(panda.seq[1].enable, Enabled.DISABLED.value, group=group)

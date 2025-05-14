@@ -1,20 +1,28 @@
 ---
 title: "Panda Configure"
-experiment: "cm37271-5"
+experiment: "cm40643-2/bluesky"
 instrument: "i22"
-detectors: ["saxs", "waxs"]
+detectors: ["saxs", "waxs"] #For i22 this is a list which can contain, "saxs", "waxs", "i0", "it", "oav" and others listed in the i22 dodal modules
+BITA:  
+  IN: "TTLIN3.VAL"
+  High: True
+# BITB:  "TTLIN4.VAL"
+# BITC:  "TTLIN5.VAL"
+# POSA: "POSA>=POSITION"
+# POSB: "POSB>=POSITION"
+# POSC: "POSC>=POSITION"
 
 profile-0:
   cycles: 3
-  seq_trigger: "IMMEDIATE"
-  out_trigger: "TTLOUT1"
-  multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
+  seq_trigger: "IMMEDIATE" #this can be "IMMEDIATE"
+  out_trigger: "TTLOUT1.VAL"
+  multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the duration of the first
 
 
   group-0:
     frames: 1
     wait_time: 3000
-    wait_units: "MS"
+    wait_units: "MS" #can be "MIN", "S", "MS", "US"
     run_time: 3000
     run_units: "MS"
     pause_trigger: IMMEDIATE

@@ -39,7 +39,7 @@ from ophyd_async.plan_stubs import (apply_panda_settings,
 
 from ophyd_async.epics.adpilatus import PilatusDetector, PilatusTriggerMode
 
-# from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
+from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 
 from dodal.devices.tetramm import TetrammDetector
 from dodal.devices.oav.oav_detector import OAV
@@ -114,7 +114,7 @@ def make_beamline_devices(beamline: str) -> list:
     return beamline_devices
 
 
-def wait_until_complete(pv_obj, waiting_value=0, timeout=None) -> MsgGenerator:
+def wait_until_complete(pv_obj, waiting_value=0, timeout=None):
     """
     An async wrapper for the ophyd async wait_for_value function, to allow it to run inside the bluesky run engine
     Typical use case is waiting for an active pv to change to 0, indicating that the run has finished, which then allows the
@@ -128,7 +128,7 @@ def wait_until_complete(pv_obj, waiting_value=0, timeout=None) -> MsgGenerator:
 
 
 
-def set_panda_directory(panda_directory: Path) -> MsgGenerator:
+def set_panda_directory(panda_directory: Path):
     """Updates the root folder"""
 
     suffix = datetime.now().strftime("_%Y%m%d%H%M%S")
@@ -145,6 +145,17 @@ def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
     settings = yield from wait_for_awaitable(provider.retrieve(yaml_file_name))
 
     return settings
+
+
+def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
+
+    settings = yield from retrieve_settings(provider, yaml_file_name, panda)
+
+
+
+
+    yield from apply_panda_settings(settings)
+
 
 def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> None:
 
@@ -214,7 +225,7 @@ def set_pulses(panda: HDFPanda, n_pulse: int, pulse_step: int, frequency_multipl
 
 
 
-def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="arm_panda")  -> MsgGenerator:
+def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="arm_panda"):
 
     """
     
@@ -234,7 +245,7 @@ def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="
 
 
 
-def disarm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq = 1, group="disarm_panda") -> MsgGenerator:
+def disarm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq = 1, group="disarm_panda"):
     
 
     """
@@ -444,17 +455,21 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
 
     TRIGGER_METHOD = 'Fly' #"MANUAL"
 
+    if beamline == 'i22':
+        visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment)
+    if beamline == 'p38':
+        visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), "cm40650-2/bluesky")
+        panda_name = "panda2"
 
     yield from bps.open_run()
     
-    visit_path = os.path.join("/dls/i22/data",str(datetime.now().year), experiment)
     print(f"Data will be saved in {visit_path}")
 
     set_path_provider(
     StaticVisitPathProvider(
         beamline,
         Path(visit_path),
-        client=RemoteDirectoryServiceClient("http://i22-control:8088/api"),
+        client=RemoteDirectoryServiceClient(f"http://{beamline}-control:8088/api"),
         )
     )
 
@@ -517,7 +532,7 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
 
 
     n_cycles = profile.cycles
-    seq_table = profile.seq_table()
+    seq_table = profile.seq_table() #seq table should be grabbed from the panda and used instead, in order to decouple run from setup panda
     n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
     duration = profile.duration
 
@@ -596,25 +611,30 @@ if __name__ == "__main__":
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
 
-    # RE(setup_panda("i22", "cm40643-2/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
+    # modifications made dodal Tetramm.py line 133
 
-    def quickthing():
+    RE(setup_panda("i22", "cm40643-2/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
+
+    # def quickthing():
         
-        settings = yield from load_settings_from_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name="i22_PandaTrigger_panda1")
-        print(settings["seq.1.enable"])
+    #     settings = yield from load_settings_from_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name="i22_PandaTrigger_panda1")
+    #     print(settings["seq.1.enable"])
 
-        settings["seq.1.enable"] = "ONE"
-
-
-        print(settings["seq.1.enable"])
-
-        print(type(settings))
-
-        for x in settings:
-            print(x, settings[x])
+    #     settings["seq.1.enable"] = "ONE"
 
 
-    RE(quickthing())
+    #     print(settings["seq.1.enable"])
+
+    #     print(type(settings))
+
+    #     for x in settings:
+
+    #         if ("ttl" in x) or ("lvds" in x) or ("seq" in x) or ("lut" in x):
+
+    #             print(x, settings[x])
+
+
+    # RE(quickthing())
 
 
 

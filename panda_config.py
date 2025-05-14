@@ -63,7 +63,6 @@ set_utils_beamline(BL)
 PULSEBLOCKS = 4
 PULSEBLOCKASENTRYBOX = False
 PULSE_BLOCK_NAMES = ["FS", "DETS/TETS","OAV","Fluro"]
-COLUMN_NAMES = ["Groups","Frames","Wait Time", "Wait Units", "Run Time", "Run Units", "Pause Trigger", "Wait Pulses", "Run Pulses"]
 THEME_NAME = "clam"
 # print(module_name_for_beamline(BL))
 
@@ -121,8 +120,8 @@ class EditableTableview(ttk.Treeview):
 			pass
 
 		# what row and column was clicked on
-		rowid = self.identify_row(event.y)
-		column = self.identify_column(event.x)
+		rowid = self.group_identify_row(event.y)
+		column = self.group_identify_column(event.x)
 
 
 		# get column position info
@@ -233,7 +232,6 @@ class CheckButtonPopup(ttk.Checkbutton):
 		self.parent = parent
 		self.rowid = rowid
 		self.column = column
-		COLUMN_NAMES = columns
 
 		self.row_num = int(rowid[-2::], 16)-1
 
@@ -242,7 +240,7 @@ class CheckButtonPopup(ttk.Checkbutton):
 
 		self.root = tk.Toplevel() ##HOLY MOLY - THIS WAS TK.TK AND IT WAS CAUSING SO MANY ISSUES, USE TOPLEVEL WHEN OPENING NEW TEMP WINDOW. IT WAS CUASING THE CHECKBUTTON TO ASSIGN TO SOMETHING ELSE. SEE https://stackoverflow.com/questions/55208876/tkinter-set-and-get-not-working-in-a-window-inside-a-window
 		self.root.minsize(w,h)
-		self.root.title(f"{COLUMN_NAMES[column]} - Group: {self.row_num}")
+		self.root.title(f"{columns[column]} - Group: {self.row_num}")
 
 		vals = self.parent.item(self.rowid, 'values')
 		self.vals = list(vals)
@@ -329,9 +327,6 @@ class EntryPopup(ttk.Entry):
 		self.column = column
 		self.entrytype = entrytype
 		self.insert(0, text) 
-		# self['state'] = 'readonly'
-		# self['readonlybackground'] = 'white'
-		# self['selectbackground'] = '#1BA1E2'
 		self['exportselection'] = False
 
 		self.focus_force()
@@ -443,6 +438,11 @@ class ProfileTab(ttk.Frame):
 
 	def build_profile_tree(self):
 
+		COLUMN_NAMES = list(self.profile.groups[0].__dict__.keys())[:-3]
+		COLUMN_NAMES = [f.replace('_',' ').title() for f in COLUMN_NAMES]
+
+		# print(self.profile.groups[0].__dict__.keys())
+
 		if not hasattr(self, 'profile_config_tree'):
 			self.profile_config_tree = EditableTableview(self, columns=COLUMN_NAMES, show="headings")
 		else:
@@ -535,22 +535,16 @@ class ProfileTab(ttk.Frame):
 		multipliers = [int(var.get()) for var in self.multiplier_var_options]
 		setattr(self.profile,"multipliers",multipliers)
 
-		self.configuration.profiles[self.profile.id] = self.profile
+		self.configuration.profiles[self.profile.group_id] = self.profile
 
 
 	def print_profile_button_action(self):
-
 		
 		self.parent.commit_config()
 		self.profile.analyse_profile()
 		self.generate_info_boxes()
 
-		# self.profile.append_group(Group=self.default_group)
-		# row_int = len(self.profile.groups)-1
-		# self.profile.delete_group(id=row_int)
-
-		self.profile.plot_triggering()
-
+		print(self.profile)
 
 		for i in self.profile.groups:
 			print(i)
@@ -601,12 +595,12 @@ class ProfileTab(ttk.Frame):
 
 		super().__init__(self.notebook,borderwidth=5, relief='raised')
 
-		self.notebook.add(self, text ='Profile '+str(self.profile.id))
+		self.notebook.add(self, text ='Profile '+str(self.profile.group_id))
 
 		self.columnconfigure(tuple(range(60)), weight=1)
 		self.rowconfigure(tuple(range(30)), weight=1)
 
-		ttk.Label(self, text ='Profile '+str(self.profile.id)).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		ttk.Label(self, text ='Profile '+str(self.profile.group_id)).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
 
 		self.outputs = self.profile.outputs()
 		self.inputs = self.profile.inputs()
@@ -614,8 +608,6 @@ class ProfileTab(ttk.Frame):
 		self.build_multiplier_choices()
 
 		self.default_group = Group(0, 1, 1, "MS", 1, "MS", 'IMMEDIATE', [1,0,0,0], [1,0,0,0])
-
-		# self.ins, self.outs = self.create_in_out_trigger()
 		
 		### add tree view ############################################
 		
@@ -655,15 +647,13 @@ class ProfileTab(ttk.Frame):
 		self.deletefinalrow_button = ttk.Button(self, text ="Discard group", command = self.delete_last_groups_button_action)
 		self.print_profile_button = ttk.Button(self, text ="Print Profile", command = self.print_profile_button_action)
 		
-		self.plot_profile_button.grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='news')
-
+		self.plot_profile_button.grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='nes')
 		self.insertrow_button.grid(column = 0, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
 		self.deleterow_button.grid(column = 1, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
-		
 		self.appendrow_button.grid(column = 3, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
 		self.deletefinalrow_button.grid(column = 4, row = 10, padx = 5,pady = 5,columnspan=1, sticky='news')
 		
-		self.plot_profile_button.grid(column = 8, row = 0, padx = 5,pady = 5,columnspan=1, sticky='nes')
+		self.print_profile_button.grid(column = 3, row = 1, padx = 5,pady = 5,columnspan=1, sticky='nes')
 
 
 class PandaConfigBuilderGUI(tk.Tk):
@@ -691,7 +681,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 			self.notebook.forget(self.add_frame)
 
 			default_configuration = PandaTriggerConfig.read_from_yaml(self.default_config_path)
-			default_configuration.profiles[0].id = len(self.configuration.profiles)
+			default_configuration.profiles[0].group_id = len(self.configuration.profiles)
 			profile = default_configuration.profiles[0]
 
 			self.configuration.append_profile(profile)
@@ -876,17 +866,12 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.show_wiring_config_button = ttk.Button(self.global_settings_frame, text ="Wiring config", command = self.show_wiring_config)
 		self.Opentextbutton = ttk.Button(self.global_settings_frame, text ="Open Text Editor", command = self.open_textedit)
 
-		# self.load_button.grid(column = 0, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		# self.save_button.grid(column = 1, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		# self.configure_button.grid(column =2, row = 0, padx = 5,pady = 5,columnspan=1,sticky="e")
-		# self.show_wiring_config_button.grid(column = 4, row = 0, padx = 5,pady = 5,columnspan=1)
-		# self.Opentextbutton.grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1)
-
 		self.load_button.pack(fill ="both",expand=True, side="left")
 		self.save_button.pack(fill ="both",expand=True, side="left")
 		self.configure_button.pack(fill ="both",expand=True, side="left")
 		self.show_wiring_config_button.pack(fill ="both",expand=True, side="left")
 		self.Opentextbutton.pack(fill ="both",expand=True, side="left")
+
 
 
 	def build_add_frame(self):
@@ -906,9 +891,6 @@ class PandaConfigBuilderGUI(tk.Tk):
 		ttk.Label(self.experiment_settings_frame, text ="Experiment:").grid(column = 0, row = 1, padx = 5,pady = 5 ,sticky="w" )
 		tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_var).grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
 		
-		# self.experiment_dir = tk.StringVar(value=self.configuration.data_dir)
-		# ttk.Label(self.experiment_settings_frame, text ="Save dir:").grid(column = 0, row = 2, padx = 5,pady = 5 ,sticky="w" )
-		# tk.Entry(self.experiment_settings_frame, bd =1, textvariable=self.experiment_dir, width=30).grid(column = 1, row = 2, padx = 5,pady = 5 ,sticky="w" )
 
 
 	def build_active_detectors_frame(self):
@@ -961,6 +943,8 @@ class PandaConfigBuilderGUI(tk.Tk):
 			answer = tk.messagebox.askyesno("PandA not Connected", "PandA is not connected, if you continue things will not work. Continue?")
 			if answer:
 				pass
+			else:
+				quit()
 
 
 		self.panda_config_yaml = panda_config_yaml
@@ -994,6 +978,22 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.window.resizable(1,1)
 		self.window.minsize(600,200)
 		self.theme("clam")
+
+		menubar = tk.Menu(self.window)
+		filemenu = tk.Menu(menubar, tearoff=0)
+		filemenu.add_command(label="New", command=self.window.quit)
+		filemenu.add_command(label="Open", command=self.window.quit)
+		filemenu.add_command(label="Save", command=self.window.quit)
+		filemenu.add_separator()
+		filemenu.add_command(label="Exit", command=self.window.quit)
+		menubar.add_cascade(label="File", menu=filemenu)
+
+		helpmenu = tk.Menu(menubar, tearoff=0)
+		helpmenu.add_command(label="Help Index", command=self.window.quit)
+		helpmenu.add_command(label="About...", command=self.window.quit)
+		menubar.add_cascade(label="Help", menu=helpmenu)
+
+		self.window.config(menu=menubar)
 
 		# style = ttk.Style()
 		# style.configure("BW.TLabel", foreground="blue", background="black")
@@ -1054,22 +1054,9 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 if __name__ == '__main__':
 
-	# panda = HDFPanda()
-	# print(panda.inenc[1])
-	# quit()
-
-
-	# print(3, decimal_to_binary(3))
-	# print(192, decimal_to_binary(192))
-	# quit()
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
 	print(dir_path)
 	config_filepath = os.path.join(dir_path,"panda_config.yaml")
 	PandaConfigBuilderGUI(config_filepath)
-	# # quit()
-
-
-	# panda_trigger = ConfigureTrigger(config_filepath)
-	# panda_trigger.plot_triggering(1,confirm=True)
 

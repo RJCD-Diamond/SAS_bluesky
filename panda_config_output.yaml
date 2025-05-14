@@ -1,17 +1,16 @@
 ---
 title: Panda Configure
-experiment: cm37271-5
-year: 2025
-user: Default
+experiment: cm40643-2/bluesky
 instrument: i22
+detectors: [saxs, waxs]
 profile-0:
-  id: 0
+  group_id: 0
   cycles: 3
-  in_trigger: IMMEDIATE
-  out_trigger: TTLOUT1
+  seq_trigger: IMMEDIATE
+  out_trigger: TTLOUT1.VAL
   multiplier: [1, 2, 4, 8]
   group-0:
-    id: 0
+    group_id: 0
     frames: 1
     wait_time: 3000
     wait_units: MS
@@ -21,7 +20,7 @@ profile-0:
     wait_pulses: [1, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
   group-1:
-    id: 1
+    group_id: 1
     frames: 1
     wait_time: 1000
     wait_units: MS
@@ -31,7 +30,7 @@ profile-0:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 0]
   group-2:
-    id: 2
+    group_id: 2
     frames: 8
     wait_time: 1000
     wait_units: MS
@@ -41,7 +40,7 @@ profile-0:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
   group-3:
-    id: 3
+    group_id: 3
     frames: 1
     wait_time: 1000
     wait_units: MS
@@ -51,7 +50,7 @@ profile-0:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
   group-4:
-    id: 4
+    group_id: 4
     frames: 1
     wait_time: 3000
     wait_units: MS
@@ -61,13 +60,13 @@ profile-0:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [0, 0, 0, 0]
 profile-1:
-  id: 1
+  group_id: 1
   cycles: 1
-  in_trigger: IMMEDIATE
+  seq_trigger: IMMEDIATE
   out_trigger: TTLOUT2
   multiplier: [1, 2, 4, 8]
   group-0:
-    id: 0
+    group_id: 0
     frames: 1
     wait_time: 1
     wait_units: S
@@ -77,13 +76,45 @@ profile-1:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 1, 1]
 profile-2:
-  id: 2
+  group_id: 2
   cycles: 1
-  in_trigger: IMMEDIATE
+  seq_trigger: IMMEDIATE
+  out_trigger: false
+  multiplier: [1, 1, 1, 1]
+  group-0:
+    group_id: 0
+    frames: 100
+    wait_time: 0
+    wait_units: S
+    run_time: 1
+    run_units: S
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 1, 1]
+profile-3:
+  group_id: 3
+  cycles: 1
+  seq_trigger: TTL1IN
   out_trigger: false
   multiplier: [1, 2, 4, 8]
   group-0:
-    id: 0
+    group_id: 0
+    frames: 100
+    wait_time: 0
+    wait_units: S
+    run_time: 1
+    run_units: S
+    pause_trigger: IMMEDIATE
+    wait_pulses: [0, 0, 0, 0]
+    run_pulses: [1, 1, 1, 1]
+profile-4:
+  group_id: 4
+  cycles: 1
+  seq_trigger: IMMEDIATE
+  out_trigger: false
+  multiplier: [1, 2, 4, 8]
+  group-0:
+    group_id: 0
     frames: 5
     wait_time: 0
     wait_units: MS
@@ -93,7 +124,7 @@ profile-2:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 0]
   group-1:
-    id: 1
+    group_id: 1
     frames: 500
     wait_time: 0
     wait_units: MS
@@ -103,7 +134,7 @@ profile-2:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 1]
   group-2:
-    id: 2
+    group_id: 2
     frames: 500
     wait_time: 0
     wait_units: MS
