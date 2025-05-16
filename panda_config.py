@@ -22,23 +22,26 @@ from dodal.beamlines import module_name_for_beamline
 from dodal.common.beamlines.beamline_utils import set_beamline as set_utils_beamline
 from dodal.log import set_beamline as set_log_beamline
 from dodal.utils import BeamlinePrefix, get_beamline_name
-# from dodal.common.maths import in_micros
 from dodal.utils import make_device
-try:
-	from dodal.plans.save_panda import _save_panda 
-except:
-	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
+# try:
+# 	from dodal.plans.save_panda import _save_panda 
+# except:
+# 	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
+
 
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
 	HDFPanda,
 	SeqTable,
 	SeqTrigger,
-	SeqBlock, 
-	TimeUnits
+	SeqBlock
 )
 
+from ophyd_async.fastcs.panda._block import PandaTimeUnits
+
 from dodal.beamlines.i22 import panda1
+from blueapi.client.client import BlueapiClient, BlueapiRestClient
+from blueapi.config import RestConfig
 
 import bluesky.plan_stubs as bps
 
@@ -107,6 +110,7 @@ class EditableTableview(ttk.Treeview):
 		self.parent = parent
 		super().__init__(parent, *args, **kwargs)
 		self.bind("<Double-1>", lambda event: self.onDoubleClick(event))
+		self.kwargs = kwargs		
 
 	def onDoubleClick(self, event):
 		''' Executed, when a row is double-clicked. Opens 
@@ -120,9 +124,8 @@ class EditableTableview(ttk.Treeview):
 			pass
 
 		# what row and column was clicked on
-		rowid = self.group_identify_row(event.y)
-		column = self.group_identify_column(event.x)
-
+		rowid = self.identify_row(event.y)
+		column = self.identify_column(event.x)
 
 		# get column position info
 		x,y,width,height = self.bbox(rowid, column)
@@ -142,7 +145,7 @@ class EditableTableview(ttk.Treeview):
 		elif column in ["#4","#6"]: #these groups create a drop down menu
 
 			# place dropdown popup properly
-			options = list(TimeUnits.__dict__["_member_names_"])
+			options = list(PandaTimeUnits.__dict__["_member_names_"])
 			# options = [f.lower() for f in options]
 
 			self.Popup = DropdownPopup(self, rowid, int(column[1:])-1, text, options)
@@ -166,9 +169,8 @@ class EditableTableview(ttk.Treeview):
 
 		elif (column in ["#8", "#9"]):
 
-
 			if (PULSEBLOCKASENTRYBOX == False):
-				self.Popup = CheckButtonPopup(self, rowid, int(column[1:])-1, x=x,y=y, columns=COLUMN_NAMES)
+				self.Popup = CheckButtonPopup(self, rowid, int(column[1:])-1, x=x,y=y, columns=self.kwargs["columns"])
 			if (PULSEBLOCKASENTRYBOX == True):
 				self.Popup = EntryPopup(self, rowid, int(column[1:])-1, text, entrytype=list)
 				self.Popup.place(x=x, y=y+pady, width=width, height=height, anchor='w')
@@ -438,7 +440,7 @@ class ProfileTab(ttk.Frame):
 
 	def build_profile_tree(self):
 
-		COLUMN_NAMES = list(self.profile.groups[0].__dict__.keys())[:-3]
+		COLUMN_NAMES = list(self.profile.groups[0].__dict__.keys())[0:9]
 		COLUMN_NAMES = [f.replace('_',' ').title() for f in COLUMN_NAMES]
 
 		# print(self.profile.groups[0].__dict__.keys())
@@ -446,9 +448,6 @@ class ProfileTab(ttk.Frame):
 		if not hasattr(self, 'profile_config_tree'):
 			self.profile_config_tree = EditableTableview(self, columns=COLUMN_NAMES, show="headings")
 		else:
-			# for line in self.profile_config_tree.get_children():
-			# 	print(line)
-			# 	self.profile_config_tree.delete(line)
 			del self.profile_config_tree
 			self.profile_config_tree = EditableTableview(self, columns=COLUMN_NAMES, show="headings")
 
@@ -473,7 +472,7 @@ class ProfileTab(ttk.Frame):
                            orient ="vertical", 
                            command = self.profile_config_tree.yview)
  
-		verscrlbar.grid(column = len(widths), row = table_row,padx = 0,pady = 0,columnspan=1,rowspan=5, sticky='ns')
+		verscrlbar.grid(column = len(widths), row = table_row, padx = 0,pady = 0, columnspan=1, rowspan=5, sticky='ns')
 		
 		# Configuring treeview
 		self.profile_config_tree.configure(yscrollcommand = verscrlbar.set)
@@ -486,7 +485,7 @@ class ProfileTab(ttk.Frame):
 
 			self.total_frames_label.config(text=f"Total Frames: {self.profile.total_frames}")
 			self.total_time_per_cycle.config(text=f"Time/cycle: {self.profile.duration_per_cycle:.3f} s")
-			self.total_time_label.config(text=f"Total time: {self.profile.duration:.3f} s")
+			self.total_time_label.config(text=f"Total time: {self.profile.duration_per_cycle*self.profile.cycles:.3f} s")
 
 		except:
 
@@ -494,48 +493,49 @@ class ProfileTab(ttk.Frame):
 			self.total_frames_label = ttk.Label(self, text=f"Total Frames: {self.profile.total_frames}")
 			self.total_frames_label.grid(column = 8, row = 1, padx = 5,pady = 5 ,sticky="e" )
 			
-			self.total_time_per_cycle = ttk.Label(self, text=f"Time/cycle: {np.amax(self.profile.duration_per_cycle):.3f} s")
+			self.total_time_per_cycle = ttk.Label(self, text=f"Time/cycle: {self.profile.duration_per_cycle:.3f} s")
 			self.total_time_per_cycle.grid(column = 8, row = 2, padx = 5,pady = 5 ,sticky="e" )
 
 			### total time
 
-			self.total_time_label = ttk.Label(self, text=f"Total time: {np.amax(self.profile.duration):.3f} s")
+			self.total_time_label = ttk.Label(self, text=f"Total time: {self.profile.duration_per_cycle*self.profile.cycles:.3f} s")
 			self.total_time_label.grid(column = 8, row = 3, padx = 5,pady = 5 ,sticky="e" )
 
 	
 	def edit_config_for_profile(self):
 
+		group_list = []
+
 		for group_id, group_rowid in enumerate(self.profile_config_tree.get_children()):
-			group_list = (self.profile_config_tree.item(group_rowid)["values"])
-			group_properties = (Group.__dict__["__match_args__"])
-
-			for n_col,(prop,value) in enumerate(zip(group_properties,group_list)):
-
-				if n_col in [0,1,2,4]:
-					value = int(value)
-				elif n_col in [3,5]:
-					value = str(value)
-				elif n_col in [6]:
-					value = str(value)
-				elif n_col in [7,8]:
-					pulses = (value.replace(" ",""))
-					pulses = [int(f) for f in list(pulses)]
-					value = pulses
-
-				setattr(self.profile.groups[group_id],prop,value)
+			group = (self.profile_config_tree.item(group_rowid)["values"])
+			
+			n_group =  Group(group_id=int(group[0]), 
+							frames=int(group[1]), 
+							wait_time=int(group[2]), 
+							wait_units=group[3], 
+							run_time=int(group[4]), 
+							run_units=group[5],
+							pause_trigger=group[6], 
+							wait_pulses=[int(f) for f in list(group[7].replace(" ",""))], 
+							run_pulses=[int(f) for f in list(group[8].replace(" ",""))])
+			
+			group_list.append(n_group)
 
 		cycles = self.get_n_cycles_value()
-		seq_trigger = self.get_start_value()
-		# out_trigger = self.clicked_output_trigger.get()
-		# inhibit = self.get_inhibit_value()
+		profile_trigger = self.get_start_value()
+		multiplier = [int(f.get()) for f in self.multiplier_var_options]
+		out_trigger = "Dunno"
 
-		setattr(self.profile,"cycles",cycles)
-		setattr(self.profile,"seq_trigger",seq_trigger)
-		# setattr(self.profile,"out_trigger",out_trigger)
-		multipliers = [int(var.get()) for var in self.multiplier_var_options]
-		setattr(self.profile,"multipliers",multipliers)
+		new_profile = Profile(profile_id=self.profile.profile_id, 
+						cycles=cycles, 
+						seq_trigger=profile_trigger, 
+						out_trigger=out_trigger, 
+						groups=group_list, 
+						multiplier=multiplier)
+		
+		self.profile = new_profile
+		self.configuration.profiles[self.profile.profile_id] = new_profile
 
-		self.configuration.profiles[self.profile.group_id] = self.profile
 
 
 	def print_profile_button_action(self):
@@ -595,19 +595,27 @@ class ProfileTab(ttk.Frame):
 
 		super().__init__(self.notebook,borderwidth=5, relief='raised')
 
-		self.notebook.add(self, text ='Profile '+str(self.profile.group_id))
+		self.notebook.add(self, text ='Profile '+str(self.profile.profile_id))
 
 		self.columnconfigure(tuple(range(60)), weight=1)
 		self.rowconfigure(tuple(range(30)), weight=1)
 
-		ttk.Label(self, text ='Profile '+str(self.profile.group_id)).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
+		ttk.Label(self, text ='Profile '+str(self.profile.profile_id)).grid(column =0, row = 0, padx = 5,pady = 5 ,sticky="w" )
 
 		self.outputs = self.profile.outputs()
 		self.inputs = self.profile.inputs()
 
 		self.build_multiplier_choices()
 
-		self.default_group = Group(0, 1, 1, "MS", 1, "MS", 'IMMEDIATE', [1,0,0,0], [1,0,0,0])
+		self.default_group  = Group(group_id=0, 
+				frames=1, 
+				wait_time=1, 
+				wait_units="MS", 
+				run_time=1, 
+				run_units="MS",
+				pause_trigger="IMMEDIATE", 
+				wait_pulses=[1,0,0,0], 
+				run_pulses=[1,0,0,0])
 		
 		### add tree view ############################################
 		
@@ -1049,10 +1057,19 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 
 
-
-
-
 if __name__ == '__main__':
+
+	#https://github.com/DiamondLightSource/blueapi/blob/main/src/blueapi/client/client.py <- use this to do stuff
+
+	
+	
+	# i22_rest_config = RestConfig("https://i22-blueapi.diamond.ac.uk/api:8088")
+
+	# i22_rest_client = BlueapiRestClient(i22_rest_config)
+	# i22_blueapiclient = BlueapiClient(rest=i22_rest_client)
+
+	# print(i22_blueapiclient.get_plans())
+	# quit()
 
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))

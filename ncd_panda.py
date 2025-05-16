@@ -61,7 +61,10 @@ from ProfileGroups import (Profile,
                            PandaTriggerConfig, time_units)
 
 
-
+from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
+from typing import Annotated, Any
+from bluesky.protocols import Readable
+from pydantic import Field, NonNegativeFloat, validate_call
 
 #: Buffer added to deadtime to handle minor discrepencies between detector
 #: and panda clocks
@@ -150,10 +153,6 @@ def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
 def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
 
     settings = yield from retrieve_settings(provider, yaml_file_name, panda)
-
-
-
-
     yield from apply_panda_settings(settings)
 
 
@@ -340,7 +339,7 @@ def setup_pilatus(pilatus: PilatusDetector, trigger_info: TriggerInfo, group="se
 #     desc = saxs._metadata_holder.description
 
 
-def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, table_info: SeqTableInfo, trigger_info: TriggerInfo, panda: HDFPanda, group="det_atm"):
+def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, trigger_info: TriggerInfo, panda: HDFPanda, group="det_atm"):
 
     """
     
@@ -349,7 +348,6 @@ def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, table_inf
     """
 
     yield from bps.stage_all(*detectors, flyer, group=group)
-    yield from bps.prepare(flyer, table_info, wait=False, group=group)
 
     # yield from bps.declare_stream(*detectors, name='hardware_triggered', collect=True)
 
@@ -360,13 +358,7 @@ def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, table_inf
     #     #     yield from bps.collect(det)
 
     for det in detectors:
-        # yield from bps.stage(det, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
-        if isinstance(det, TetrammDetector):
-            print("Tetramm is currently freezing it, and won't be used")
-            yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
-
-        else:
-            yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
+        yield from bps.prepare(det, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
 
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
@@ -450,16 +442,19 @@ def generate_repeated_trigger_info(profile: Profile, max_deadtime: float, liveti
 
 
 
-# @attach_data_session_metadata_wrapper
-def setup_panda(beamline: str, experiment: str, profile: Profile, active_detector_names: list = ["saxs","waxs"], panda_name="panda1", force_load=True) -> MsgGenerator:
+@attach_data_session_metadata_decorator()
+@validate_call(config={"arbitrary_types_allowed": True})
+def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
+    experiment: Annotated[str, "Experiment name eg. cm12345. This will go into /dls/data/beamline/experiment"], 
+    profile: Annotated[Profile, "Profile containing the infomation required to setup the panda, triggers, times etc"], 
+    active_detector_names: Annotated[List, "List of str of the detector names, eg. saxs, waxs, i0, it"] = ["saxs","waxs"], 
+    panda_name="panda1", 
+    force_load=True) -> MsgGenerator:
 
     TRIGGER_METHOD = 'Fly' #"MANUAL"
+    CONFIG_NAME = 'PandaTrigger'
 
-    if beamline == 'i22':
-        visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment)
-    if beamline == 'p38':
-        visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), "cm40650-2/bluesky")
-        panda_name = "panda2"
+    visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment)
 
     yield from bps.open_run()
     
@@ -474,13 +469,6 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
     )
 
     yield from set_panda_directory(visit_path)
-
-
-    # run_number =  return_run_number()
-    # print(run_number)
-
-
-    CONFIG_NAME = 'PandaTrigger'
 
     beamline_devices = make_beamline_devices(beamline)
     panda = beamline_devices[panda_name]
@@ -567,7 +555,10 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
 
 
     ####stage the detectors, the flyer, the panda
-    yield from stage_and_prepare_detectors(active_detectors, flyer, table_info, trigger_info, panda)
+    
+    yield from bps.prepare(flyer, table_info, wait=False, group=group) #setup triggering on panda
+
+    yield from stage_and_prepare_detectors(active_detectors, flyer, trigger_info, panda)
 
 
     if TRIGGER_METHOD == 'MANUAL':
@@ -601,6 +592,11 @@ def setup_panda(beamline: str, experiment: str, profile: Profile, active_detecto
     yield from bps.close_run()
 
 
+def panda_triggers_detectors():
+
+    pass
+
+
 
 
 if __name__ == "__main__":
@@ -614,6 +610,8 @@ if __name__ == "__main__":
     # modifications made dodal Tetramm.py line 133
 
     RE(setup_panda("i22", "cm40643-2/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
+
+    # RE(panda_triggers_detectors("i22", active_detector_names=["saxs", "i0"]))
 
     # def quickthing():
         

@@ -15,7 +15,6 @@ BITA:
 profile-0:
   cycles: 3
   seq_trigger: "IMMEDIATE" #this can be "IMMEDIATE"
-  out_trigger: "TTLOUT1.VAL"
   multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the duration of the first
 
 
@@ -25,7 +24,7 @@ profile-0:
     wait_units: "MS" #can be "MIN", "S", "MS", "US"
     run_time: 3000
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [1, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
 
@@ -35,7 +34,7 @@ profile-0:
     wait_units: "MS"
     run_time: 1000
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 0]
 
@@ -45,7 +44,7 @@ profile-0:
     wait_units: "MS"
     run_time: 1000
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
 
@@ -55,7 +54,7 @@ profile-0:
     wait_units: "MS"
     run_time: 3000
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 0, 0, 0]
   
@@ -65,7 +64,7 @@ profile-0:
     wait_units: "MS"
     run_time: 1000
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [0, 0, 0, 0]
 
@@ -75,7 +74,6 @@ profile-0:
 profile-1:
   cycles: 1
   seq_trigger: "IMMEDIATE"
-  out_trigger: "TTLOUT2"
   multiplier: [1, 2, 4, 8] #ie first set of detectors run at the bas clock, and others run as 1/N the speed of the first
 
   group-0:
@@ -84,7 +82,7 @@ profile-1:
     wait_units: "S"
     run_time: 1
     run_units: "S"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 1, 1]
 
@@ -96,7 +94,6 @@ profile-1:
 profile-2:
   cycles: 1
   seq_trigger: "IMMEDIATE"
-  out_trigger: False
   multiplier: [1, 1, 1, 1]
 
   group-0:
@@ -105,7 +102,7 @@ profile-2:
     wait_units: "S"
     run_time: 1
     run_units: "S"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 1, 1]
 
@@ -115,7 +112,6 @@ profile-2:
 profile-3:
   cycles: 1
   seq_trigger: "TTL1IN"
-  out_trigger: False
   multiplier: [1, 2, 4, 8]
 
   group-0:
@@ -124,7 +120,7 @@ profile-3:
     wait_units: "S"
     run_time: 1
     run_units: "S"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 1, 1]
 
@@ -135,7 +131,6 @@ profile-3:
 profile-4:
   cycles: 1
   seq_trigger: "IMMEDIATE"
-  out_trigger: False
   multiplier: [1, 2, 4, 8]
 
   group-0:
@@ -144,7 +139,7 @@ profile-4:
     wait_units: "MS"
     run_time: 1
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 0]
 
@@ -154,7 +149,7 @@ profile-4:
     wait_units: "MS"
     run_time: 5
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 1]
 
@@ -164,6 +159,6 @@ profile-4:
     wait_units: "MS"
     run_time: 5
     run_units: "MS"
-    pause_trigger: IMMEDIATE
+    pause_trigger: "IMMEDIATE"
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 0, 1]

@@ -20,6 +20,8 @@ import bluesky.plan_stubs as bps
 from bluesky import RunEngine
 from dodal.beamlines.i22 import panda1
 
+from pydantic import BaseModel, Field, model_validator
+from typing import List, Any
 
 """
 
@@ -47,8 +49,7 @@ time_units = {"ns": 1e-9, "nsec": 1e-9, "usec": 1e-6, "ms": 1e-3, "msec": 1e-3,
 	"s": 1, "sec": 1, "min": 60, "m": 60, "hour": 60*60, "h": 60*60 }
 
 
-@dataclass
-class Group():
+class Group(BaseModel):
 
 	group_id: int
 	frames: int
@@ -57,11 +58,17 @@ class Group():
 	run_time: int
 	run_units: str
 	pause_trigger: str
-	wait_pulses: list
-	run_pulses: list
+	wait_pulses: List[int] #0 or 1 only
+	run_pulses: List[int] #0 or 1 only
+	
+	#created by model_post_init
+	wait_time_s: float = None
+	run_time_s: float = None
+	group_duration: float = None
 
 
-	def __post_init__(self):
+	def model_post_init(self, __context: Any) -> None:
+
 		self.run_units = self.run_units.upper()
 		self.wait_units = self.wait_units.upper()
 		self.pause_trigger = self.pause_trigger.upper()
@@ -108,17 +115,19 @@ class Group():
 
 
 
-@dataclass
-class Profile():
+class Profile(BaseModel):
 	
-	group_id: int
+	profile_id: int
 	cycles: int
 	seq_trigger: str
-	out_trigger: str
 	groups: list
 	multiplier: list
 
-	def __post_init__(self):
+	total_frames: int = 0
+	duration_per_cycle: float = 0
+	duration: float = 0
+
+	def model_post_init(self, __context: Any):
 		
 		if len(self.groups) > 0:
 
@@ -137,8 +146,29 @@ class Profile():
 
 		[f.recalc_times() for f in self.groups]
 
-
 	def analyse_profile(self):
+
+		self.calc_total_frames()
+		self.calc_duration_per_cycle()
+
+
+
+	def calc_total_frames(self):
+
+		self.total_frames = 0
+		for n_group in self.groups:
+			self.total_frames+=n_group.frames
+		return self.total_frames
+	
+	def calc_duration_per_cycle(self):
+
+		self.duration_per_cycle = 0
+
+		for n_group in self.groups:
+			self.duration_per_cycle+=n_group.group_duration
+		return self.duration_per_cycle
+
+	def analyse_profile_legacy(self):
 
 		self.wait_matrix = []	
 		self.run_matrix = []
@@ -147,7 +177,6 @@ class Profile():
 		self.total_frames = 0
 
 		for n_group in self.groups:
-			# n_group = self.groups[n]
 
 			self.duration_per_cycle+=n_group.group_duration
 			self.total_frames+=n_group.frames
@@ -163,7 +192,6 @@ class Profile():
 		self.n_groups = len(self.groups)
 		self.veto_trigger_time, self.veto_signal, self.active_out = self.build_veto_signal()
 
-
 		close_list = [np.abs(1-np.log10(np.amin((np.asarray(self.veto_trigger_time[self.veto_trigger_time!=0])/time_units[i])))) for i in time_units.keys()]
 		self.best_time_unit = list(time_units)[np.argmin(close_list)]
 
@@ -177,17 +205,17 @@ class Profile():
 			self.analyse_profile()
 
 	
-	def delete_group(self, group_id, analyse_profile=True):
+	def delete_group(self, id, analyse_profile=True):
 
-		self.groups.pop(group_id)
+		self.groups.pop(id)
 		self.re_group_id_groups()
 
 		if analyse_profile:
 			self.analyse_profile()
 
-	def insert_group(self, group_id, Group, analyse_profile=True):
+	def insert_group(self, id, Group, analyse_profile=True):
 
-		self.groups.insert(group_id, Group)
+		self.groups.insert(id, Group)
 		self.re_group_id_groups()
 
 		
@@ -195,11 +223,11 @@ class Profile():
 			self.analyse_profile()
 			
 	
-	def load_profile_to_panda(self, panda):
+	# def load_profile_to_panda(self, panda):
 		
-		table = self.seq_table()
+	# 	table = self.seq_table()
 			
-		yield from bps.abs_set(panda.seq[1].table, table, group="panda-config")
+	# 	yield from bps.abs_set(panda.seq[1].table, table, group="panda-config")
 
 
 
@@ -398,8 +426,6 @@ class PandaTriggerConfig():
 				year = config["year"]
 
 
-			print(config["BITA"]["IN"])
-
 			profile_names = [f for f in config if f.startswith("profile")]
 			profiles = []
 
@@ -407,7 +433,6 @@ class PandaTriggerConfig():
 
 				profile_cycles = config[profile_name]["cycles"]
 				profile_trigger = config[profile_name]["seq_trigger"]
-				out_trigger = config[profile_name]["out_trigger"]
 				multiplier = config[profile_name]["multiplier"]
 				groups = {key: config[profile_name][key] for key in config[profile_name].keys() if key.startswith("group")}
 				group_list = []
@@ -416,9 +441,16 @@ class PandaTriggerConfig():
 
 					group = config[profile_name][group_name]
 
-					n_Group  = Group(g, group["frames"], group["wait_time"], group["wait_units"], group["run_time"], group["run_units"],
-						group["pause_trigger"], group["wait_pulses"], group["run_pulses"])
-
+					n_Group  = Group(group_id=g, 
+					  				frames=group["frames"], 
+									wait_time=group["wait_time"], 
+									wait_units=group["wait_units"], 
+									run_time=group["run_time"], 
+									run_units=group["run_units"],
+									pause_trigger=group["pause_trigger"], 
+									wait_pulses=group["wait_pulses"], 
+									run_pulses=group["run_pulses"])
+					
 					group_list.append(n_Group)
 
 
@@ -429,7 +461,11 @@ class PandaTriggerConfig():
 				# 	print("Not a valgroup_id in trigger")
 				# 	quit()
 
-				n_profile = Profile(p, profile_cycles, profile_trigger, out_trigger, group_list, multiplier)
+				n_profile = Profile(profile_id=p, 
+						cycles=profile_cycles, 
+						seq_trigger=profile_trigger, 
+						groups=group_list, 
+						multiplier=multiplier)
 
 				profiles.append(n_profile)
 
@@ -448,11 +484,11 @@ class PandaTriggerConfig():
 
 		for p,profile in enumerate(self.profiles):
 
-			profile_dict = asdict(profile)
+			profile_dict = profile.model_dump()
 			del profile_dict["groups"]
 
 			for g,group in enumerate(profile.groups):
-				group_dict = asdict(group)
+				group_dict = group.model_dump()
 				profile_dict["group-"+str(g)] = group_dict
 
 			exp_dict["profile-"+str(p)] = profile_dict
@@ -488,7 +524,7 @@ class PandaTriggerConfig():
 		new_profiles = []
 
 		for n, profile in enumerate(iter_prof):
-			profile.group_id = n
+			profile.profile_id = n
 			new_profiles.append(profile)
 
 		self.profiles = new_profiles
@@ -514,27 +550,6 @@ def load_panda(config_yaml_path):
 	RE = RunEngine({})
 	RE(_load())
 
-
-# def show_panda_pv():
-
-# 	mock_panda = mock_panda()
-
-# 	yield from bps.stage(panda, group="panda-config")
-	
-# 	response = yield from panda.data.capture.get_value()
-	
-# 	return response
-
-# async def mock_panda():
-# 	class Panda(CommonPandaBlocks):
-# 		def __init__(self, uri: str, name: str = ""):
-# 			super().__init__(name=name, connector=fastcs_connector(self, uri))
-
-# 	async with init_devices(mock=True):
-# 		mock_panda = Panda("PANDAQSRV:", "mock_panda")
-
-# 	assert mock_panda.name == "mock_panda"
-# 	return mock_panda
 
 
 if __name__ == "__main__":
