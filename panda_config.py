@@ -1,4 +1,4 @@
-#!/dls_sw/apps/python/miniforge/4.10.0-0/envs/python3.11/bin/python
+#!/dls/science/users/akz63626/i22/i22_venv/bin/python
 
 
 """
@@ -18,18 +18,18 @@ from tkinter import filedialog as fd
 
 from bluesky.run_engine import RunEngine
 
-from dodal.beamlines import module_name_for_beamline
+# from dodal.beamlines import module_name_for_beamline
 from dodal.common.beamlines.beamline_utils import set_beamline as set_utils_beamline
 from dodal.log import set_beamline as set_log_beamline
 from dodal.utils import BeamlinePrefix, get_beamline_name
-from dodal.utils import make_device
+# from dodal.utils import make_device
 # try:
 # 	from dodal.plans.save_panda import _save_panda 
 # except:
 # 	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
 
 
-from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
+# from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
 	HDFPanda,
 	SeqTable,
@@ -37,7 +37,11 @@ from ophyd_async.fastcs.panda import (
 	SeqBlock
 )
 
-from ophyd_async.fastcs.panda._block import PandaTimeUnits
+try:
+	from ophyd_async.fastcs.panda._block import PandaTimeUnits
+except:
+	from ophyd_async.fastcs.panda import TimeUnits
+
 
 from dodal.beamlines.i22 import panda1
 from blueapi.client.client import BlueapiClient, BlueapiRestClient

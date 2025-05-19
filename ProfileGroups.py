@@ -1,27 +1,25 @@
-from dataclasses import dataclass, asdict
-import matplotlib.pyplot as plt
-import copy
-import yaml
-from datetime import datetime
-import os
-from ncdcore import ncdcore
+import os, copy, yaml
 import numpy as np
+import matplotlib.pyplot as plt
+from datetime import datetime
 
 from ophyd_async.fastcs.panda import (
-	HDFPanda,
 	SeqTable,
-	SeqTrigger,
-	SeqBlock)
+	SeqTrigger)
 
 from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
-from ophyd_async.plan_stubs import store_settings
+# from ophyd_async.plan_stubs import store_settings
 
-import bluesky.plan_stubs as bps
+# import bluesky.plan_stubs as bps
 from bluesky import RunEngine
 from dodal.beamlines.i22 import panda1
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
+from pydantic.dataclasses import dataclass
 from typing import List, Any
+
+from ncdcore import ncdcore
+
 
 """
 
@@ -125,7 +123,6 @@ class Profile(BaseModel):
 
 	total_frames: int = 0
 	duration_per_cycle: float = 0
-	duration: float = 0
 
 	def model_post_init(self, __context: Any):
 		
@@ -167,6 +164,22 @@ class Profile(BaseModel):
 		for n_group in self.groups:
 			self.duration_per_cycle+=n_group.group_duration
 		return self.duration_per_cycle
+	
+	@property
+	def duration(self):
+		duration = self.duration_per_cycle*self.cycles
+		return duration
+	
+	@property
+	def active_out(self):
+
+		wait_matrix = np.array([g.wait_pulses for g in self.groups])
+		run_matrix = np.array([g.run_pulses for g in self.groups])
+		active_matrix = wait_matrix+run_matrix
+		active_out = np.where((np.sum(active_matrix,axis=0)) != 0)[0]
+
+		return active_out
+
 
 	def analyse_profile_legacy(self):
 
@@ -387,7 +400,7 @@ class Profile(BaseModel):
 
 	
 
-@dataclass
+@dataclass #pydantic dataclass
 class PandaTriggerConfig():
 
 	profiles: list
