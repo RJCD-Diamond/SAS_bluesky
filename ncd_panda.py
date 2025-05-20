@@ -172,6 +172,8 @@ def wait_until_complete(pv_obj, waiting_value=0, timeout=300):
 def set_experiment_directory(beamline: str, visit_path: Path):
     """Updates the root folder"""
 
+    print("should not require this to also be set in i22.py")
+
     set_path_provider(
     StaticVisitPathProvider(
         beamline,
@@ -553,6 +555,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
         yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls")
         yaml_file_name = f"{beamline}_{CONFIG_NAME}_{panda_name}"
         print(f"{yaml_file_name}.yaml has been uploaded to PandA")
+        LOGGER.info(f"{yaml_file_name}.yaml has been uploaded to PandA")
         ######### make sure correct yaml is loaded
         yield from upload_yaml_to_panda(yaml_directory=yaml_directory,yaml_file_name=yaml_file_name,panda=panda)
 
@@ -643,7 +646,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     yield from disarm_panda_pulses(panda=panda, pulses=active_pulses) #start set to false because currently don't actually want to collect data
     yield from bps.unstage_all(*active_detectors, flyer)  #stops the hdf capture mode
 
-    
+
 
 
     ###########################
@@ -677,44 +680,20 @@ if __name__ == "__main__":
 
 
     ###################################
-    # # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
+    # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
-
-    # modifications made dodal Tetramm.py line 133
-
     RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
 
     # RE(panda_triggers_detectors("i22", active_detector_names=["saxs", "i0"]))
-    # def quickthing():
-        
-    #     settings = yield from load_settings_from_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name="i22_PandaTrigger_panda1")
-    #     print(settings["seq.1.enable"])
-
-    #     settings["seq.1.enable"] = "ONE"
 
 
-    #     print(settings["seq.1.enable"])
-
-    #     print(type(settings))
-
-    #     for x in settings:
-
-    #         if ("ttl" in x) or ("lvds" in x) or ("seq" in x) or ("lut" in x):
-
-    #             print(x, settings[x])
-
-
-    # RE(quickthing())
-
-
-
-
+    # dev_name = "panda1"
     # connected_dev = return_connected_device('i22',dev_name)
     # print(f"{connected_dev=}")
-    # RE(save_device_to_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name=f"{dev_name}_pv", device=connected_dev))
+    # RE(save_device_to_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name=f"{dev_name}_pv_without_pulse", device=connected_dev))
 
 
 
