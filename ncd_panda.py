@@ -6,7 +6,7 @@ from typing import Annotated, Any
 
 import numpy as np
 from bluesky.run_engine import RunEngine
-from bluesky.utils import MsgGenerator
+from bluesky.utils import MsgGenerator, short_uid
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
 from pydantic import Field, NonNegativeFloat, validate_call
@@ -33,7 +33,10 @@ from ophyd_async.fastcs.panda import (
     SeqTableInfo,
     SeqTrigger,
     StaticSeqTableTriggerLogic,
+    PandaPcompDirection,
+    PcompInfo,
 )
+
 from ophyd_async.plan_stubs import (apply_panda_settings, 
 									retrieve_settings, 
 									store_settings,
@@ -43,7 +46,7 @@ from ophyd_async.plan_stubs import (apply_panda_settings,
 from ophyd_async.epics.adpilatus import PilatusDetector, PilatusTriggerMode
 
 from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
-
+from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
 from dodal.devices.oav.oav_detector import OAV
 
 from dodal.devices.areadetector.plugins.CAM import ColorMode
@@ -73,6 +76,48 @@ RE = RunEngine(call_returns_result=True)
 class PANDA(Enum):
     Enable = "ONE"
     Disable = "ZERO"
+
+
+def fly_and_collect_with_wait(
+    stream_name: str,
+    flyer: StandardFlyer[SeqTableInfo] | StandardFlyer[PcompInfo],
+    detectors: list[StandardDetector],
+):
+    """Kickoff, complete and collect with a flyer and multiple detectors.
+
+    This stub takes a flyer and one or more detectors that have been prepared. It
+    declares a stream for the detectors, then kicks off the detectors and the flyer.
+    The detectors are collected until the flyer and detectors have completed.
+
+    """
+    yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
+    yield from bps.kickoff(flyer, wait=True)
+    for detector in detectors:
+        yield from bps.kickoff(detector)
+
+    # collect_while_completing
+    group = short_uid(label="complete")
+
+    yield from bps.complete(flyer, wait=False, group=group)
+    for detector in detectors:
+        yield from bps.complete(detector, wait=False, group=group)
+
+    done = False
+    while not done:
+        try:
+            yield from bps.wait(group=group, timeout=0.5)
+        except TimeoutError:
+            pass
+        else:
+            done = True
+        yield from bps.collect(
+            *detectors,
+            return_payload=False,
+            name=stream_name,
+        )
+    yield from bps.wait(group=group)
+    yield from bps.sleep(2)
+
 
 
 def return_connected_device(beamline: str, device_name: str) -> StandardDetector:
@@ -110,7 +155,7 @@ def make_beamline_devices(beamline: str) -> list:
     return beamline_devices
 
 
-def wait_until_complete(pv_obj, waiting_value=0, timeout=None):
+def wait_until_complete(pv_obj, waiting_value=0, timeout=300):
     """
     An async wrapper for the ophyd async wait_for_value function, to allow it to run inside the bluesky run engine
     Typical use case is waiting for an active pv to change to 0, indicating that the run has finished, which then allows the
@@ -124,13 +169,21 @@ def wait_until_complete(pv_obj, waiting_value=0, timeout=None):
 
 
 
-def set_panda_directory(panda_directory: Path):
+def set_experiment_directory(beamline: str, visit_path: Path):
     """Updates the root folder"""
+
+    set_path_provider(
+    StaticVisitPathProvider(
+        beamline,
+        Path(visit_path),
+        client=RemoteDirectoryServiceClient(f"http://{beamline}-control:8088/api"),
+        )
+    )
 
     suffix = datetime.now().strftime("_%Y%m%d%H%M%S")
 
     async def set_panda_dir():
-        await get_path_provider().update(directory=panda_directory, suffix=suffix)
+        await get_path_provider().update(directory=visit_path, suffix=suffix)
 
     yield from bps.wait_for([set_panda_dir])
 
@@ -217,7 +270,7 @@ def set_pulses(panda: HDFPanda, n_pulse: int, pulse_step: int, frequency_multipl
 
 
 
-def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="arm_panda"):
+def arm_panda_pulses(panda: HDFPanda, pulses: list = list(np.arange(PULSEBLOCKS)+1), n_seq=1, group="arm_panda"):
 
     """
     
@@ -237,7 +290,7 @@ def arm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq=1, group="
 
 
 
-def disarm_panda_pulses(panda: HDFPanda, pulses: list = [1,2,3,4], n_seq = 1, group="disarm_panda"):
+def disarm_panda_pulses(panda: HDFPanda, pulses: list = list(np.arange(PULSEBLOCKS)+1), n_seq = 1, group="disarm_panda"):
     
 
     """
@@ -304,10 +357,10 @@ def setup_oav(oav: OAV,  parameters: OAVParameters, group="oav_setup"):
     #     wait=True,
     # )
 
-def setup_pilatus(pilatus: PilatusDetector, trigger_info: TriggerInfo, group="setup_pilatus"):
+# def setup_pilatus(pilatus: PilatusDetector, trigger_info: TriggerInfo, group="setup_pilatus"):
 
-    yield from bps.stage(pilatus, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
-    yield from bps.prepare(pilatus, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
+#     yield from bps.stage(pilatus, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
+#     yield from bps.prepare(pilatus, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
 
 
 # def setup_pilatus_trigger(saxs):
@@ -376,6 +429,8 @@ def set_panda_output(panda: HDFPanda, output_type: str, output: int, state: str,
     yield from bps.abs_set(output_attr.val, state_value, group=group)
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
+
+
 @AsyncStatus.wrap
 async def update_path():
 
@@ -412,6 +467,23 @@ def generate_repeated_trigger_info(profile: Profile, max_deadtime: float, liveti
 
         repeated_trigger_info.append(trigger_info)
 
+def prepare_pulses(panda: HDFPanda):
+    """
+    
+    Takes a panda and prepares the pulses, this is the last thing to do before starting the run
+    
+    """
+
+    group = "panda_pulses"
+    for pulse in range(1, PULSEBLOCKS + 1):
+        yield from bps.prepare(panda.pulse[pulse], group=group)
+
+    pulse_data = yield from bps.rd(panda.seq[DEFAULT_SEQ])
+
+    yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
+
+
+
 
 
 @attach_data_session_metadata_decorator()
@@ -433,19 +505,16 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     LOGGER.info(f"Data will be saved in {visit_path}")
     print(f"Data will be saved in {visit_path}")
 
-    set_path_provider(
-    StaticVisitPathProvider(
-        beamline,
-        Path(visit_path),
-        client=RemoteDirectoryServiceClient(f"http://{beamline}-control:8088/api"),
-        )
-    )
-
-    yield from set_panda_directory(visit_path)
+    yield from set_experiment_directory(beamline, visit_path)
 
     beamline_devices = make_beamline_devices(beamline)
     panda = beamline_devices[panda_name]
-    yield from ensure_connected(panda)
+    
+    try:
+        yield from ensure_connected(panda)
+    except Exception as e:
+        LOGGER.error(f"Failed to connect to PandA: {e}")
+        raise
 
     # for available_det in beamline_devices:
     #     print(available_det)
@@ -470,7 +539,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
         print(f"{device_name} is connected")
 
     
-    detector_deadtime = return_deadtime(detectors=active_detectors, exposure=1)
+    detector_deadtime = return_deadtime(detectors=active_detectors, exposure=profile.duration)
     max_deadtime = max(detector_deadtime)
 
     for dt, dn in zip(detector_deadtime, active_detector_names):
@@ -513,11 +582,8 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     #                                 frame_timeout=None)
 
     #set up trigger info etc
-
-    print(n_triggers*n_cycles)
-
     trigger_info = TriggerInfo(number_of_events = n_triggers*n_cycles, 
-                            trigger=DetectorTrigger.CONSTANT_GATE, 
+                            trigger=DetectorTrigger.CONSTANT_GATE, #EDGE_TRIGGER
                             deadtime=max_deadtime,
                             livetime=np.amax(profile.duration_per_cycle),
                             exposures_per_event=1,
@@ -536,7 +602,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     yield from bps.prepare(flyer, table_info, wait=False) #setup triggering on panda - changes the sequence table
     yield from stage_and_prepare_detectors(active_detectors, flyer, trigger_info) ###change the sequence table
 
-    yield from prepare_pulses(panda))
+    # yield from prepare_pulses(panda))
 
 
     # ###### ^ this is the last thing setting up the panda
@@ -546,7 +612,11 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     #arm the panda pulses
     yield from arm_panda_pulses(panda=panda, pulses=active_pulses)
 
+
+
     if TRIGGER_METHOD == 'MANUAL':
+        stream_name = 'primary'
+        yield from bps.declare_stream(*active_detectors, name=stream_name, collect=True)
         yield from start_sequencer(panda=panda, n_seq=DEFAULT_SEQ)
         yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
         # yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False, GENERAL_TIMEOUT) #only use this while testing and things keep freezing
@@ -554,7 +624,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     else:
 
         ###########################
-        yield from fly_and_collect(
+        yield from fly_and_collect_with_wait(
             stream_name='primary',
             detectors=active_detectors,
             flyer=flyer,
@@ -568,9 +638,14 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     ###########################
     ####start diabling and unstaging everything
     ####
+    yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
     # yield from disable_sequencer(panda=panda, n_seq=DEFAULT_SEQ, wait=True) #this can be performed by unstage flyer
     yield from disarm_panda_pulses(panda=panda, pulses=active_pulses) #start set to false because currently don't actually want to collect data
     yield from bps.unstage_all(*active_detectors, flyer)  #stops the hdf capture mode
+
+    
+
+
     ###########################
     ###########################
 
@@ -584,6 +659,24 @@ def panda_triggers_detectors():
 
 if __name__ == "__main__":
 
+
+    #################################
+
+    #notes to self
+    # tetramm only works with mulitple triggers, something to do with arm_status being set to none possible.
+    #when tetramm has multiple triggers eg, 2 the data shape is not 2. only every 1. It's duration is twice as long, but still 1000 samples
+
+    #tetramm.py
+    # async def prepare(self, trigger_info: TriggerInfo):
+    #     self.maximum_readings_per_frame = self.maximum_readings_per_frame*sum(trigger_info.number_of_events)
+
+    #still getting the experiment number jumping by two
+    #neeed to sort out pulses on panda
+    #split setup and run 
+
+
+
+    ###################################
     # # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")

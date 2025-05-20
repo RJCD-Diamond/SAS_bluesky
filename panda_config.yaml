@@ -86,6 +86,16 @@ profile-1:
     wait_pulses: [0, 0, 0, 0]
     run_pulses: [1, 1, 1, 1]
 
+  # group-1:
+  #   frames: 1
+  #   wait_time: 1
+  #   wait_units: "S"
+  #   run_time: 1
+  #   run_units: "S"
+  #   pause_trigger: "IMMEDIATE"
+  #   wait_pulses: [0, 0, 0, 0]
+  #   run_pulses: [1, 1, 1, 1]
+
 
 ######################################################################################
 
