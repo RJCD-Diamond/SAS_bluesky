@@ -7,14 +7,15 @@ from ophyd_async.fastcs.panda import (
 	SeqTable,
 	SeqTrigger)
 
-from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
+from ophyd_async.core import in_micros #DetectorTrigger, TriggerInfo, wait_for_value, 
 # from ophyd_async.plan_stubs import store_settings
 
 # import bluesky.plan_stubs as bps
 # from bluesky import RunEngine
-from dodal.beamlines.i22 import panda1
+# from dodal.beamlines.i22 import panda1
 
 from pydantic import BaseModel
+from pydantic_core import from_json
 from pydantic.dataclasses import dataclass
 from typing import List, Any
 
@@ -49,7 +50,6 @@ time_units = {"ns": 1e-9, "nsec": 1e-9, "usec": 1e-6, "ms": 1e-3, "msec": 1e-3,
 
 class Group(BaseModel):
 
-	group_id: int
 	frames: int
 	wait_time: int
 	wait_units: str
@@ -118,7 +118,7 @@ class Profile(BaseModel):
 	profile_id: int = 0
 	cycles: int = 1
 	seq_trigger: str = "IMMEDIATE"
-	groups: List = []
+	groups: List[Group] = []
 	multiplier: List[int] = [1, 1, 1, 1]
 
 	total_frames: int = 0
@@ -130,18 +130,18 @@ class Profile(BaseModel):
 
 			self.analyse_profile()
 
-	def re_group_id_groups(self):
+	# def re_group_id_groups(self):
 		
-		iter_group = copy.deepcopy(self.groups)
-		new_groups = []
+	# 	iter_group = copy.deepcopy(self.groups)
+	# 	new_groups = []
 
-		for n, group in enumerate(iter_group):
-			group.group_id = n
-			new_groups.append(group)
+	# 	for n, group in enumerate(iter_group):
+	# 		group.group_id = n
+	# 		new_groups.append(group)
 
-		self.groups = new_groups
+	# 	self.groups = new_groups
 
-		[f.recalc_times() for f in self.groups]
+	# 	[f.recalc_times() for f in self.groups]
 
 	def analyse_profile(self):
 
@@ -212,7 +212,7 @@ class Profile(BaseModel):
 	def append_group(self, Group, analyse_profile=True):
 
 		self.groups.append(Group)
-		self.re_group_id_groups()
+		# self.re_group_id_groups()
 
 		if analyse_profile:
 			self.analyse_profile()
@@ -221,7 +221,7 @@ class Profile(BaseModel):
 	def delete_group(self, id, analyse_profile=True):
 
 		self.groups.pop(id)
-		self.re_group_id_groups()
+		# self.re_group_id_groups()
 
 		if analyse_profile:
 			self.analyse_profile()
@@ -229,7 +229,7 @@ class Profile(BaseModel):
 	def insert_group(self, id, Group, analyse_profile=True):
 
 		self.groups.insert(id, Group)
-		self.re_group_id_groups()
+		# self.re_group_id_groups()
 
 		
 		if analyse_profile:
@@ -454,8 +454,7 @@ class PandaTriggerConfig():
 
 					group = config[profile_name][group_name]
 
-					n_Group  = Group(group_id=g, 
-					  				frames=group["frames"], 
+					n_Group  = Group(frames=group["frames"], 
 									wait_time=group["wait_time"], 
 									wait_units=group["wait_units"], 
 									run_time=group["run_time"], 
@@ -522,13 +521,13 @@ class PandaTriggerConfig():
 	def delete_profile(self, n):
 
 		self.profiles.pop(n)
-		self.re_group_id_profiles()
+		# self.re_group_id_profiles()
 		self.__post_init__()
 
 	def append_profile(self, Profile):
 
 		self.profiles.append(Profile)
-		self.re_group_id_profiles()
+		# self.re_group_id_profiles()
 		self.__post_init__()
 
 	def re_group_id_profiles(self):
@@ -568,8 +567,18 @@ class PandaTriggerConfig():
 if __name__ == "__main__":
 	
 	P = Profile()
-	P.append_group(Group(group_id=0, frames=1, wait_time=1, wait_units="S", run_time=1, run_units="S", pause_trigger="False", wait_pulses=[0,0,0,0], run_pulses=[1,1,1,1]))
+	P.append_group(Group(frames=1, wait_time=1, wait_units="S", run_time=1, run_units="S", pause_trigger="False", wait_pulses=[0,0,0,0], run_pulses=[1,1,1,1]))
 	print(P)
+
+	json_schema = P.model_dump_json()
+    
+
+	profile = Profile.model_validate(P)
+	
+	new_profile = Profile.model_validate(from_json(json_schema, allow_partial=True))
+
+	print(new_profile)
+
 	quit()
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))

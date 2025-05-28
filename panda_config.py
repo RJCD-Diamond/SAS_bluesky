@@ -28,6 +28,7 @@ from dodal.utils import BeamlinePrefix, get_beamline_name
 # except:
 # 	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
 
+from pprint import pprint
 
 # from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
@@ -44,7 +45,7 @@ except:
 
 
 from dodal.beamlines.i22 import panda1
-from blueapi.client.client import BlueapiRestClient
+from blueapi.client.client import BlueapiRestClient, BlueapiClient
 from blueapi.config import RestConfig
 
 
@@ -444,8 +445,9 @@ class ProfileTab(ttk.Frame):
 
 	def build_profile_tree(self):
 
-		COLUMN_NAMES = list(self.profile.groups[0].__dict__.keys())[0:9]
+		COLUMN_NAMES = list(self.profile.groups[0].__dict__.keys())[0:8]
 		COLUMN_NAMES = [f.replace('_',' ').title() for f in COLUMN_NAMES]
+		COLUMN_NAMES.insert(0, "Group ID")  # Add Group ID as the first column
 
 		# print(self.profile.groups[0].__dict__.keys())
 
@@ -467,6 +469,7 @@ class ProfileTab(ttk.Frame):
 		for i in range(len(self.profile.groups)):
 			group_dict = (self.profile.groups[i].__dict__)
 			group_list = list(group_dict.values())[0:len(COLUMN_NAMES)]
+			group_list.insert(0, i)
 			self.profile_config_tree.insert("", "end", values=group_list)
 
 		self.profile_config_tree.grid(column = 0, row = table_row,padx = 5,pady = 5,columnspan=len(COLUMN_NAMES),rowspan=5)
@@ -513,8 +516,7 @@ class ProfileTab(ttk.Frame):
 		for group_id, group_rowid in enumerate(self.profile_config_tree.get_children()):
 			group = (self.profile_config_tree.item(group_rowid)["values"])
 			
-			n_group =  Group(group_id=int(group[0]), 
-							frames=int(group[1]), 
+			n_group =  Group(frames=int(group[1]), 
 							wait_time=int(group[2]), 
 							wait_units=group[3], 
 							run_time=int(group[4]), 
@@ -611,8 +613,7 @@ class ProfileTab(ttk.Frame):
 
 		self.build_multiplier_choices()
 
-		self.default_group  = Group(group_id=0, 
-				frames=1, 
+		self.default_group  = Group(frames=1, 
 				wait_time=1, 
 				wait_units="MS", 
 				run_time=1, 
@@ -693,7 +694,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 			self.notebook.forget(self.add_frame)
 
 			default_configuration = PandaTriggerConfig.read_from_yaml(self.default_config_path)
-			default_configuration.profiles[0].group_id = len(self.configuration.profiles)
+			# default_configuration.profiles[0].group_id = len(self.configuration.profiles)
 			profile = default_configuration.profiles[0]
 
 			self.configuration.append_profile(profile)
@@ -855,10 +856,31 @@ class PandaConfigBuilderGUI(tk.Tk):
 		ax.set_xticklabels(labels, rotation=90)
 		plt.show()
 
-	def show_plans(self):
+	def get_plans(self):
 
-		print(self.client.get_plans())
+		plans = self.client.get_plans().plans
 
+		for plan in plans:
+			print(plan,"\n\n")
+
+	def get_devices(self):
+
+		devices = (self.client.get_devices().devices)
+		
+		for dev in devices:
+			print(dev,"\n\n")
+
+	def stop_plans(self):
+
+		self.client.stop()
+
+	def pause_plans(self):
+
+		self.client.pause()
+
+	def resume_plans(self):
+
+		self.client.resume()
 
 	# def run_plan(self):
 
@@ -869,8 +891,11 @@ class PandaConfigBuilderGUI(tk.Tk):
 		
 		self.run_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
 		self.run_frame.pack(fill ="both",expand=True, side="right")
-		self.run_button = ttk.Button(self.run_frame, text ="Show Plans", command = self.show_plans).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
-
+		self.get_plans_button = ttk.Button(self.run_frame, text ="Get Plans", command = self.get_plans).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.get_devices_button = ttk.Button(self.run_frame, text ="Get Devices", command = self.get_devices).grid(column = 2, row = 3, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.stop_plans_button = ttk.Button(self.run_frame, text ="Stop Plan", command = self.stop_plans).grid(column = 2, row = 5, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.pause_plans_button = ttk.Button(self.run_frame, text ="Pause Plan", command = self.pause_plans).grid(column = 2, row = 7, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.resume_plans_button = ttk.Button(self.run_frame, text ="Resume Plan", command = self.resume_plans).grid(column = 2, row = 9, padx = 5,pady = 5,columnspan=1, sticky='news')
 
 	def build_global_settings_frame(self):
 
@@ -1067,7 +1092,8 @@ class PandaConfigBuilderGUI(tk.Tk):
 		# from blueapi.config import RestConfig
 		# from blueapi.client.rest import BlueapiRestClient
 		self.config = RestConfig(host=f"{BL}-blueapi.diamond.ac.uk", port=443, protocol="https")
-		self.client = BlueapiRestClient(self.config)
+		self.rest_client = BlueapiRestClient(self.config)
+		self.client = BlueapiClient(self.rest_client)
 	
 		self.window.mainloop()
 

@@ -505,7 +505,7 @@ def check_tetramm():
 @validate_call(config={"arbitrary_types_allowed": True})
 def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
     experiment: Annotated[str, "Experiment name eg. cm12345. This will go into /dls/data/beamline/experiment"], 
-    profile: Annotated[Profile, "Profile containing the infomation required to setup the panda, triggers, times etc"], 
+    profile: Annotated[Profile | str, "Profile or json of a Profile containing the infomation required to setup the panda, triggers, times etc"], 
     active_detector_names: Annotated[list, "List of str of the detector names, eg. saxs, waxs, i0, it"] = ["saxs","waxs"], 
     panda_name="panda1", 
     force_load=True) -> MsgGenerator:
@@ -513,8 +513,12 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     TRIGGER_METHOD = 'Fly' #"MANUAL"
     CONFIG_NAME = 'PandaTrigger'
 
+    if type(profile) == str:
+        profile = Profile.model_validate(from_json(json_schema, allow_partial=True)) #convert from json to Profile object
 
-    visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment)
+
+
+    visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment) 
     
     LOGGER.info(f"Data will be saved in {visit_path}")
     print(f"Data will be saved in {visit_path}")
@@ -525,7 +529,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     panda = beamline_devices[panda_name]
     
     try:
-        yield from ensure_connected(panda)
+        yield from ensure_connected(panda) #ensure the panda is connected
     except Exception as e:
         LOGGER.error(f"Failed to connect to PandA: {e}")
         raise
@@ -571,7 +575,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
 
     #load Panda setting to panda
     if force_load == True:
-        yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls")
+        yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls") #this is the directory where the yaml files are stored
         yaml_file_name = f"{beamline}_{CONFIG_NAME}_{panda_name}"
         print(f"{yaml_file_name}.yaml has been uploaded to PandA")
         LOGGER.info(f"{yaml_file_name}.yaml has been uploaded to PandA")
@@ -580,7 +584,7 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
 
     
     # yield from modify_panda_seq_table(panda, profile, n_seq=DEFAULT_SEQ) #this actually isn't require if a seq table flyer is applied
-    active_pulses = profile.active_out+1 #because python counts from 0, but panda coutns from 1
+    active_pulses = profile.active_out+1 #because python counts from 0, but panda counts from 1
 
 
     n_cycles = profile.cycles
