@@ -11,7 +11,7 @@ from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_mi
 # from ophyd_async.plan_stubs import store_settings
 
 # import bluesky.plan_stubs as bps
-from bluesky import RunEngine
+# from bluesky import RunEngine
 from dodal.beamlines.i22 import panda1
 
 from pydantic import BaseModel
@@ -115,11 +115,11 @@ class Group(BaseModel):
 
 class Profile(BaseModel):
 	
-	profile_id: int
-	cycles: int
-	seq_trigger: str
-	groups: list
-	multiplier: list
+	profile_id: int = 0
+	cycles: int = 1
+	seq_trigger: str = "IMMEDIATE"
+	groups: List = []
+	multiplier: List[int] = [1, 1, 1, 1]
 
 	total_frames: int = 0
 	duration_per_cycle: float = 0
@@ -543,39 +543,40 @@ class PandaTriggerConfig():
 		self.profiles = new_profiles
 
 
-def savei22pandaconfig(output_file):
+# def savei22pandaconfig(output_file):
 
-	# i22panda = panda1()
-	# save_device(i22panda)
+# 	# i22panda = panda1()
+# 	# save_device(i22panda)
 
-    _save_panda("i22", "panda1", output_file)
+#     _save_panda("i22", "panda1", output_file)
 
 
 
-def load_panda(config_yaml_path):
+# def load_panda(config_yaml_path):
 
-	config_yaml_path = config_yaml_path
+# 	config_yaml_path = config_yaml_path
 
-	def _load(config_yaml_path):
-		i22panda = panda1()
-		yield from load_device(i22panda, str(config_yaml_path))
+# 	def _load(config_yaml_path):
+# 		i22panda = panda1()
+# 		yield from load_device(i22panda, str(config_yaml_path))
 
-	RE = RunEngine({})
-	RE(_load())
+# 	RE = RunEngine({})
+# 	RE(_load())
 
 
 
 if __name__ == "__main__":
 	
+	P = Profile()
+	P.append_group(Group(group_id=0, frames=1, wait_time=1, wait_units="S", run_time=1, run_units="S", pause_trigger="False", wait_pulses=[0,0,0,0], run_pulses=[1,1,1,1]))
+	print(P)
+	quit()
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
-
-
 	config_filepath = os.path.join(dir_path,"panda_config.yaml")
 
 
 	config = PandaTriggerConfig.read_from_yaml(config_filepath)
-
 	config.save_to_yaml(os.path.join(dir_path,"panda_config_output.yaml"))
 	
 	

@@ -44,8 +44,9 @@ except:
 
 
 from dodal.beamlines.i22 import panda1
-from blueapi.client.client import BlueapiClient, BlueapiRestClient
+from blueapi.client.client import BlueapiRestClient
 from blueapi.config import RestConfig
+
 
 import bluesky.plan_stubs as bps
 
@@ -59,13 +60,12 @@ __author__ = 'Richard Dixey'
 ############################################################################################
 
 
-BL = get_beamline_name("i22")
+try:
+	BL = get_beamline_name(os.environ['BEAMLINE'])
+except:
+	BL = "i22"
+	print("Defaulting to i22")
 
-BL_Prefix = BeamlinePrefix(BL)
-print(get_beamline_name(BL))
-
-set_log_beamline(BL)
-set_utils_beamline(BL)
 
 PULSEBLOCKS = 4
 PULSEBLOCKASENTRYBOX = False
@@ -855,15 +855,21 @@ class PandaConfigBuilderGUI(tk.Tk):
 		ax.set_xticklabels(labels, rotation=90)
 		plt.show()
 
-	def run_experiment(self):
+	def show_plans(self):
 
-		print(np.random.random())
+		print(self.client.get_plans())
+
+
+	# def run_plan(self):
+
+	# 	print(self.client.get_plans())
+
 
 	def build_exp_run_frame(self):
 		
 		self.run_frame = ttk.Frame(self.window,borderwidth=5, relief='raised')
 		self.run_frame.pack(fill ="both",expand=True, side="right")
-		self.run_button = ttk.Button(self.run_frame, text ="Run Sequence", command = self.run_experiment).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.run_button = ttk.Button(self.run_frame, text ="Show Plans", command = self.show_plans).grid(column = 2, row = 1, padx = 5,pady = 5,columnspan=1, sticky='news')
 
 
 	def build_global_settings_frame(self):
@@ -949,14 +955,16 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 	def __init__(self,panda_config_yaml=None):
 
-		try:
-			self.panda = return_connected_device("i22", "panda1")
-		except:
-			answer = tk.messagebox.askyesno("PandA not Connected", "PandA is not connected, if you continue things will not work. Continue?")
-			if answer:
-				pass
-			else:
-				quit()
+		if os.environ.get('USER') != "akz63626": #check if I am runing this
+
+			try:
+				self.panda = return_connected_device("i22", "panda1")
+			except:
+				answer = tk.messagebox.askyesno("PandA not Connected", "PandA is not connected, if you continue things will not work. Continue?")
+				if answer:
+					pass
+				else:
+					quit()
 
 
 		self.panda_config_yaml = panda_config_yaml
@@ -1056,6 +1064,11 @@ class PandaConfigBuilderGUI(tk.Tk):
 		#################################################################
 
 
+		# from blueapi.config import RestConfig
+		# from blueapi.client.rest import BlueapiRestClient
+		self.config = RestConfig(host=f"{BL}-blueapi.diamond.ac.uk", port=443, protocol="https")
+		self.client = BlueapiRestClient(self.config)
+	
 		self.window.mainloop()
 
 
@@ -1066,15 +1079,6 @@ if __name__ == '__main__':
 	#https://github.com/DiamondLightSource/blueapi/blob/main/src/blueapi/client/client.py <- use this to do stuff
 
 	
-	
-	# i22_rest_config = RestConfig("https://i22-blueapi.diamond.ac.uk/api:8088")
-
-	# i22_rest_client = BlueapiRestClient(i22_rest_config)
-	# i22_blueapiclient = BlueapiClient(rest=i22_rest_client)
-
-	# print(i22_blueapiclient.get_plans())
-	# quit()
-
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
 	print(dir_path)

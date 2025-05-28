@@ -12,7 +12,7 @@ import bluesky.preprocessors as bpp
 from pydantic import Field, NonNegativeFloat, validate_call
 
 from dodal.log import LOGGER
-from dodal.utils import make_device, make_all_devices
+from dodal.utils import make_device, make_all_devices, get_run_number
 from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
 
 from ophyd_async.plan_stubs._wait_for_awaitable import wait_for_awaitable
@@ -105,7 +105,7 @@ def fly_and_collect_with_wait(
     done = False
     while not done:
         try:
-            yield from bps.wait(group=group, timeout=0.5)
+            yield from bps.wait(group=group, timeout=1)
         except TimeoutError:
             pass
         else:
@@ -485,11 +485,23 @@ def prepare_pulses(panda: HDFPanda):
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
+def check_tetramm():
+    """
+    Checks if the tetramm is connected and returns the tetramm device.
+    If the tetramm is not connected, it will raise an error.
+    """
+
+    try:
+        tetramm = return_connected_device("i22", "tetramm")
+        return tetramm
+    except Exception as e:
+        LOGGER.error(f"Tetramm not connected: {e}")
+        raise
 
 
 
-@attach_data_session_metadata_decorator()
-@bpp.run_decorator()
+# @attach_data_session_metadata_decorator() #only enable if can't update the path provider, otherwise updates twice
+@bpp.run_decorator() 
 @validate_call(config={"arbitrary_types_allowed": True})
 def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
     experiment: Annotated[str, "Experiment name eg. cm12345. This will go into /dls/data/beamline/experiment"], 
@@ -501,15 +513,15 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     TRIGGER_METHOD = 'Fly' #"MANUAL"
     CONFIG_NAME = 'PandaTrigger'
 
+
     visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment)
     
-
     LOGGER.info(f"Data will be saved in {visit_path}")
     print(f"Data will be saved in {visit_path}")
 
     yield from set_experiment_directory(beamline, visit_path)
 
-    beamline_devices = make_beamline_devices(beamline)
+    beamline_devices = make_beamline_devices(beamline) #this could be done faster with make_devices instead of make_all_devices
     panda = beamline_devices[panda_name]
     
     try:
@@ -521,24 +533,31 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
     # for available_det in beamline_devices:
     #     print(available_det)
 
+    # run_number =  get_run_number(visit_path)
+
     ####################
 
     # v CHECK TO SEE IF THIS CAN BE PERFORMED IN A SMARTER WAY v
 
     active_detectors = tuple([beamline_devices[det_name] for det_name in active_detector_names]) ###must be a tuple to be hashable and therefore work with bps.stage_all or whatever
     # active_detectors = active_detectors + (panda,)
-    
+
+
     ######################3
 
     # yield from bps.declare_stream(*active_detectors, name="main_stream", collect=True)
 
+
     print("\n",active_detectors,"\n")
     LOGGER.info("\n",active_detectors,"\n")
 
-
     for device, device_name in zip(active_detectors, active_detector_names):
-        yield from ensure_connected(device)
-        print(f"{device_name} is connected")
+        try:
+            yield from ensure_connected(device)
+            print(f"{device_name} is connected")
+        except Exception as e:
+            LOGGER.error(f"{device} not connected: {e}")
+            raise
 
     
     detector_deadtime = return_deadtime(detectors=active_detectors, exposure=profile.duration)
@@ -678,6 +697,9 @@ if __name__ == "__main__":
     #split setup and run 
 
 
+    ###if TETRAMMS ARE NOT WORKING TRY TfgAcquisition() in gda to reset all malcolm stuff to defaults
+
+
 
     ###################################
     # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
@@ -685,7 +707,10 @@ if __name__ == "__main__":
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
-    RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
+    RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0"], force_load=False))
+
+    # profile = configuration.profiles[2]
+    # RE(setup_panda("i22"None, "cm40643-3/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))
 
     # RE(panda_triggers_detectors("i22", active_detector_names=["saxs", "i0"]))
 
