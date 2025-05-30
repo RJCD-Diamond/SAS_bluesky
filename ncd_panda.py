@@ -3,13 +3,16 @@ from enum import Enum
 from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Any
-
 import numpy as np
+
+from pydantic_core import from_json
+from pydantic import Field, NonNegativeFloat, validate_call
+
+
 from bluesky.run_engine import RunEngine
 from bluesky.utils import MsgGenerator, short_uid
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
-from pydantic import Field, NonNegativeFloat, validate_call
 
 from dodal.log import LOGGER
 from dodal.utils import make_device, make_all_devices, get_run_number
@@ -40,10 +43,10 @@ from ophyd_async.fastcs.panda import (
 from ophyd_async.plan_stubs import (apply_panda_settings, 
 									retrieve_settings, 
 									store_settings,
-									ensure_connected, fly_and_collect)
+									ensure_connected,
+                                    get_current_settings, 
+                                    fly_and_collect)
 
-
-from ophyd_async.epics.adpilatus import PilatusDetector, PilatusTriggerMode
 
 from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
@@ -52,8 +55,10 @@ from dodal.devices.oav.oav_detector import OAV
 from dodal.devices.areadetector.plugins.CAM import ColorMode
 from dodal.devices.oav.oav_parameters import OAVParameters
 
-from dodal.beamlines import module_name_for_beamline
 
+
+from dodal.beamlines import module_name_for_beamline
+from dodal.common import inject
 from dodal.common.beamlines.beamline_utils import (
     get_path_provider,
     set_path_provider)
@@ -198,10 +203,10 @@ def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
     return settings
 
 
-def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
+# def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
 
-    settings = yield from retrieve_settings(provider, yaml_file_name, panda)
-    yield from apply_panda_settings(settings)
+#     settings = yield from retrieve_settings(provider, yaml_file_name, panda)
+#     yield from apply_panda_settings(settings)
 
 
 def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> None:
@@ -485,6 +490,28 @@ def prepare_pulses(panda: HDFPanda):
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
+def check_and_apply_panda_settings(panda: HDFPanda) -> None:
+
+    yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls") #this is the directory where the yaml files are stored
+    yaml_file_name = f"{beamline}_{CONFIG_NAME}_{panda_name}"
+
+    current_panda_settings = yield from get_current_settings(panda)
+    yaml_settings = yield from load_settings_from_yaml(yaml_directory, yaml_file_name)
+
+    if current_panda_settings.__dict__ != yaml_settings.__dict__:
+        print(f"Current Panda settings do not match the yaml settings, loading yaml settings to panda")
+        LOGGER.info(f"Current Panda settings do not match the yaml settings, loading yaml settings to panda")
+
+        print(f"{yaml_file_name}.yaml has been uploaded to PandA")
+        LOGGER.info(f"{yaml_file_name}.yaml has been uploaded to PandA")
+        ######### make sure correct yaml is loaded
+        yield from upload_yaml_to_panda(yaml_directory=yaml_directory,yaml_file_name=yaml_file_name,panda=panda)
+    
+    #load Panda setting to panda
+    if force_load == True:
+        yield from check_and_apply_panda_settings(panda)
+
+
 def check_tetramm():
     """
     Checks if the tetramm is connected and returns the tetramm device.
@@ -498,24 +525,43 @@ def check_tetramm():
         LOGGER.error(f"Tetramm not connected: {e}")
         raise
 
+def multiple_pulse_blocks():
+    
+    pass
+    # for pulse in PULSEBLOCKS
+    #   get the pulse block, find out what is attached to it
+    #   set the multiplier and possibly duration accordingly
+    #   for det in detectors_on_pulse_block:
+    #       trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
+    #                                   trigger=DetectorTrigger.CONSTANT_GATE, 
+    #                                  deadtime=max_deadtime,
+    #                                  multiplier=1,
+    #                                 frame_timeout=None)
 
+def show_deadtime(detector_deadtime, active_detector_names):
+
+    for dt, dn in zip(detector_deadtime, active_detector_names):
+        print(f"deadtime for {dn} is {dt}")
+        LOGGER.info(f"deadtime for {dn} is {dt}")
 
 # @attach_data_session_metadata_decorator() #only enable if can't update the path provider, otherwise updates twice
-@bpp.run_decorator() 
 @validate_call(config={"arbitrary_types_allowed": True})
-def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
+def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
     experiment: Annotated[str, "Experiment name eg. cm12345. This will go into /dls/data/beamline/experiment"], 
     profile: Annotated[Profile | str, "Profile or json of a Profile containing the infomation required to setup the panda, triggers, times etc"], 
     active_detector_names: Annotated[list, "List of str of the detector names, eg. saxs, waxs, i0, it"] = ["saxs","waxs"], 
+    run_immediately: bool = True,
     panda_name="panda1", 
-    force_load=True) -> MsgGenerator:
+    force_load=True) -> MsgGenerator[None]:
 
-    TRIGGER_METHOD = 'Fly' #"MANUAL"
     CONFIG_NAME = 'PandaTrigger'
 
-    if type(profile) == str:
-        profile = Profile.model_validate(from_json(json_schema, allow_partial=True)) #convert from json to Profile object
-
+    if isinstance(profile, str):
+        profile = Profile.model_validate(from_json(profile, allow_partial=True)) #convert from json to Profile object
+    elif isinstance(profile, Profile):
+        pass
+    else: 
+        raise TypeError("Profile must be a Profile object or a json string of a Profile object")
 
 
     visit_path = os.path.join(f"/dls/{beamline}/data",str(datetime.now().year), experiment) 
@@ -534,23 +580,10 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
         LOGGER.error(f"Failed to connect to PandA: {e}")
         raise
 
-    # for available_det in beamline_devices:
-    #     print(available_det)
-
-    # run_number =  get_run_number(visit_path)
-
     ####################
-
     # v CHECK TO SEE IF THIS CAN BE PERFORMED IN A SMARTER WAY v
-
     active_detectors = tuple([beamline_devices[det_name] for det_name in active_detector_names]) ###must be a tuple to be hashable and therefore work with bps.stage_all or whatever
-    # active_detectors = active_detectors + (panda,)
-
-
-    ######################3
-
-    # yield from bps.declare_stream(*active_detectors, name="main_stream", collect=True)
-
+    ######################
 
     print("\n",active_detectors,"\n")
     LOGGER.info("\n",active_detectors,"\n")
@@ -563,53 +596,28 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
             LOGGER.error(f"{device} not connected: {e}")
             raise
 
-    
     detector_deadtime = return_deadtime(detectors=active_detectors, exposure=profile.duration)
     max_deadtime = max(detector_deadtime)
-
-    for dt, dn in zip(detector_deadtime, active_detector_names):
-        print(f"deadtime for {dn} is {dt}")
-        LOGGER.info(f"deadtime for {dn} is {dt}")
-
-    
+    # show_deadtime(detector_deadtime, max_deadtime)
 
     #load Panda setting to panda
     if force_load == True:
-        yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls") #this is the directory where the yaml files are stored
-        yaml_file_name = f"{beamline}_{CONFIG_NAME}_{panda_name}"
-        print(f"{yaml_file_name}.yaml has been uploaded to PandA")
-        LOGGER.info(f"{yaml_file_name}.yaml has been uploaded to PandA")
-        ######### make sure correct yaml is loaded
-        yield from upload_yaml_to_panda(yaml_directory=yaml_directory,yaml_file_name=yaml_file_name,panda=panda)
+        yield from check_and_apply_panda_settings(panda)
 
-    
-    # yield from modify_panda_seq_table(panda, profile, n_seq=DEFAULT_SEQ) #this actually isn't require if a seq table flyer is applied
     active_pulses = profile.active_out+1 #because python counts from 0, but panda counts from 1
-
-
     n_cycles = profile.cycles
     seq_table = profile.seq_table() #seq table should be grabbed from the panda and used instead, in order to decouple run from setup panda
     n_triggers = [group.frames for group in profile.groups] #[3, 1, 1, 1, 1] or something
     duration = profile.duration
 
     ############################################################
-
     # ###setup triggering of detectors
     table_info = SeqTableInfo(sequence_table=seq_table, repeats=n_cycles)
 
-    # for pulse in PULSEBLOCKS
-    #   get the pulse block, find out what is attached to it
-    #   set the multiplier and possibly duration accordingly
-    #   for det in detectors_on_pulse_block:
-    #       trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
-    #                                   trigger=DetectorTrigger.CONSTANT_GATE, 
-    #                                  deadtime=max_deadtime,
-    #                                  multiplier=1,
-    #                                 frame_timeout=None)
 
     #set up trigger info etc
     trigger_info = TriggerInfo(number_of_events = n_triggers*n_cycles, 
-                            trigger=DetectorTrigger.CONSTANT_GATE, #EDGE_TRIGGER
+                            trigger=DetectorTrigger.CONSTANT_GATE, # or maybe EDGE_TRIGGER
                             deadtime=max_deadtime,
                             livetime=np.amax(profile.duration_per_cycle),
                             exposures_per_event=1,
@@ -620,65 +628,39 @@ def setup_panda(beamline: Annotated[str, "Name of the beamline to run the scan o
 
     trigger_logic = StaticSeqTableTriggerLogic(panda.seq[DEFAULT_SEQ]) #flyer and prepare fly, sets the sequencers table
     flyer = StandardFlyer(trigger_logic) #flyer and prepare fly, sets the sequencers table
-    # flyer = StandardFlyer(StaticSeqTableTriggerLogic(panda.seq[n_seq])) #flyer and prepare fly, sets the sequencers table
-
 
     # ####stage the detectors, the flyer, the panda
-    
-    yield from bps.prepare(flyer, table_info, wait=False) #setup triggering on panda - changes the sequence table
+    yield from bps.prepare(flyer, table_info, wait=True) #setup triggering on panda - changes the sequence table - wait otherwise risking _context missing error
     yield from stage_and_prepare_detectors(active_detectors, flyer, trigger_info) ###change the sequence table
-
-    # yield from prepare_pulses(panda))
-
-
     # ###### ^ this is the last thing setting up the panda
+
+    if run_immediately:
+        yield from run_panda_triggering(panda, active_detectors, active_pulses)
+
+
+@bpp.run_decorator() #    # open/close run
+@validate_call(config={"arbitrary_types_allowed": True})
+def run_panda_triggering(panda: HDFPanda, active_detectors, active_pulses, group="run") -> MsgGenerator[None]:
     
-    
+    trigger_logic = StaticSeqTableTriggerLogic(panda.seq[DEFAULT_SEQ]) #flyer and prepare fly, sets the sequencers table
+    flyer = StandardFlyer(trigger_logic) #flyer and prepare fly, sets the sequencers table
+
     ##########################
     #arm the panda pulses
     yield from arm_panda_pulses(panda=panda, pulses=active_pulses)
 
-
-
-    if TRIGGER_METHOD == 'MANUAL':
-        stream_name = 'primary'
-        yield from bps.declare_stream(*active_detectors, name=stream_name, collect=True)
-        yield from start_sequencer(panda=panda, n_seq=DEFAULT_SEQ)
-        yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
-        # yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False, GENERAL_TIMEOUT) #only use this while testing and things keep freezing
-
-    else:
-
-        ###########################
-        yield from fly_and_collect_with_wait(
-            stream_name='primary',
-            detectors=active_detectors,
-            flyer=flyer,
-        )
-        ##########################
-
-
-    # dev_name = 'i0'
-    # yield from save_device_to_yaml(yaml_directory= os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls"), yaml_file_name=f"{dev_name}_pv", device=active_detectors[1])
-
+    ###########################
+    yield from fly_and_collect_with_wait(
+        stream_name='primary',
+        detectors=active_detectors,
+        flyer=flyer,
+    )
+    ##########################
     ###########################
     ####start diabling and unstaging everything
-    ####
     yield from wait_until_complete(panda.seq[DEFAULT_SEQ].active, False)
-    # yield from disable_sequencer(panda=panda, n_seq=DEFAULT_SEQ, wait=True) #this can be performed by unstage flyer
     yield from disarm_panda_pulses(panda=panda, pulses=active_pulses) #start set to false because currently don't actually want to collect data
     yield from bps.unstage_all(*active_detectors, flyer)  #stops the hdf capture mode
-
-
-
-
-    ###########################
-    ###########################
-
-
-def panda_triggers_detectors():
-
-    pass
 
 
 
@@ -705,13 +687,18 @@ if __name__ == "__main__":
 
 
 
+
     ###################################
     # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
-    RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0"], force_load=False))
+    # RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
+
+    for i in range(20):
+
+        RE(configure_panda_triggering("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
 
     # profile = configuration.profiles[2]
     # RE(setup_panda("i22"None, "cm40643-3/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))

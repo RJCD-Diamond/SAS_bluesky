@@ -11,6 +11,7 @@ import numpy as np
 import os
 import yaml
 import matplotlib.pyplot as plt
+from pathlib import Path
 
 import tkinter as tk
 from tkinter import ttk
@@ -28,8 +29,6 @@ from dodal.utils import BeamlinePrefix, get_beamline_name
 # except:
 # 	print("save_device has been deprecated and removed! Perhaps ophyd_async.plan_stubs.store_settings")
 
-from pprint import pprint
-
 # from ophyd_async.core import DetectorTrigger, TriggerInfo, wait_for_value, in_micros
 from ophyd_async.fastcs.panda import (
 	HDFPanda,
@@ -45,9 +44,12 @@ except:
 
 
 from dodal.beamlines.i22 import panda1
-from blueapi.client.client import BlueapiRestClient, BlueapiClient
-from blueapi.config import RestConfig
 
+from blueapi.client.event_bus import EventBusClient
+from bluesky_stomp.messaging import StompClient, BasicAuthentication
+from blueapi.client.client import BlueapiRestClient, BlueapiClient
+from blueapi.config import RestConfig, ConfigLoader, ApplicationConfig
+from stomp import Connection
 
 import bluesky.plan_stubs as bps
 
@@ -77,8 +79,22 @@ THEME_NAME = "clam"
 # _save_panda(BL, "panda1", "/scratch/panda_test.txt")
 
 
- ##################################################################33
+ ##################################################################
 
+def return_connected_device(beamline: str, device_name: str):
+    """
+    Connect to a device on the specified beamline and return the connected device.
+
+    Args:
+        beamline (str): Name of the beamline.
+        device_name (str): Name of the device to connect to.
+
+    Returns:
+        StandardDetector: The connected device.
+    """
+    module_name = module_name_for_beamline(beamline)
+    devices = make_device(f"dodal.beamlines.{module_name}", device_name, connect_immediately=True)
+    return devices[device_name]
 
 class PandaIO():
 
@@ -882,10 +898,19 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		self.client.resume()
 
-	# def run_plan(self):
+	def run_plan(self):
 
-	# 	print(self.client.get_plans())
+		current_profile = self.notebook.index("current")
 
+		profile = self.configuration.profiles[current_profile]
+		json_schema_profile = profile.model_dump_json()
+		print(json_schema_profile)
+
+		experiment = "cm40643-3"
+
+		command = f"run_panda_triggering(experiment={experiment},profile={json_schema_profile}))"
+
+		print(self.client.run_task(command))
 
 	def build_exp_run_frame(self):
 		
@@ -896,6 +921,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.stop_plans_button = ttk.Button(self.run_frame, text ="Stop Plan", command = self.stop_plans).grid(column = 2, row = 5, padx = 5,pady = 5,columnspan=1, sticky='news')
 		self.pause_plans_button = ttk.Button(self.run_frame, text ="Pause Plan", command = self.pause_plans).grid(column = 2, row = 7, padx = 5,pady = 5,columnspan=1, sticky='news')
 		self.resume_plans_button = ttk.Button(self.run_frame, text ="Resume Plan", command = self.resume_plans).grid(column = 2, row = 9, padx = 5,pady = 5,columnspan=1, sticky='news')
+		self.run_plan_button = ttk.Button(self.run_frame, text ="Run Plan", command = self.run_plan).grid(column = 2, row = 11, padx = 5,pady = 5,columnspan=1, sticky='news')
 
 	def build_global_settings_frame(self):
 
@@ -1014,16 +1040,12 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.profiles = self.configuration.profiles
 
 
-		# from tkinter import ttk  # Normal Tkinter.* widgets are not themed!
-		# from ttkthemes import ThemedTk
-
-		# self.window = ThemedTk(theme="arc")
-		
 		self.window = tk.Tk()
 		self.window.resizable(1,1)
 		self.window.minsize(600,200)
-		self.theme("clam")
+		self.theme("alt")
 
+		
 		menubar = tk.Menu(self.window)
 		filemenu = tk.Menu(menubar, tearoff=0)
 		filemenu.add_command(label="New", command=self.window.quit)
@@ -1040,31 +1062,11 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		self.window.config(menu=menubar)
 
-		# style = ttk.Style()
-		# style.configure("BW.TLabel", foreground="blue", background="black")
-
-		# self.window.tk.call("source", "azure.tcl")
-		# self.window.tk.call("set_theme", "light")
-
-		# theme_name = "awdark"
-
-		# style = ttk.Style()
-		# self.windo.tk.call('lappend', 'auto_path', './theme')
-		# self.window.tk.call('package', 'require', 'awthemes')
-		# self.window.tk.call('::themeutils::setHighlightColor', 'awdark', '#007000')
-		# self.window.tk.call('package', 'require', 'awdark')
-		# style.theme_use('awdark')
-
-
-
 		self.build_exp_run_frame()
-
 
 		self.window.title("PandA Config") 
 		self.notebook = ttk.Notebook(self.window)
 		self.notebook.pack(fill ="both",side='top',expand=True)
-
-
 
 		for i in range(self.configuration.n_profiles):
 
@@ -1083,18 +1085,39 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.build_pulse_frame()
 		self.build_active_detectors_frame()
 
-
-
 		self.build_add_frame()
 		#################################################################
 
+		#option 1 - but doesn't work
 
-		# from blueapi.config import RestConfig
-		# from blueapi.client.rest import BlueapiRestClient
-		self.config = RestConfig(host=f"{BL}-blueapi.diamond.ac.uk", port=443, protocol="https")
-		self.rest_client = BlueapiRestClient(self.config)
-		self.client = BlueapiClient(self.rest_client)
-	
+
+		# self.config = RestConfig(host=f"{BL}-blueapi.diamond.ac.uk", port=443, protocol="https")
+		# self.rest_client = BlueapiRestClient(self.config)
+
+		# self.stomp_connection = Connection([(f"{BL}-rabbitmq-daq.diamond.ac.uk",443)])
+		# self.stomp_connection.connect(BL, BL[::-1], wait=True)
+		# self.authentication = BasicAuthentication(username=BL, password=BL[::-1])
+		# self.event_bus = EventBusClient(StompClient(conn=self.stomp_connection, authentication=self.authentication))
+		# self.client = BlueapiClient(rest=self.rest_client, events=self.events_bus)
+
+
+		#option 2 - but doesn't work with tasks creation/running plans etc
+
+		# self.config = RestConfig(host=f"{BL}-blueapi.diamond.ac.uk", port=443, protocol="https")
+		# self.rest_client = BlueapiRestClient(self.config)
+		# self.client = BlueapiClient(rest=self.rest_client, events=self.events_bus)
+
+
+		#option 3 - return bad request error when trying to run a plan
+
+		blueapi_config_path = Path(os.path.join(os.path.dirname(os.path.realpath(__file__)),f"{BL}_blueapi_config.yaml"))
+		config_loader = ConfigLoader(ApplicationConfig)
+		config_loader.use_values_from_yaml(blueapi_config_path)
+		loaded_config = config_loader.load()
+		self.client = BlueapiClient.from_config(loaded_config)
+
+
+
 		self.window.mainloop()
 
 
@@ -1104,7 +1127,8 @@ if __name__ == '__main__':
 
 	#https://github.com/DiamondLightSource/blueapi/blob/main/src/blueapi/client/client.py <- use this to do stuff
 
-	
+	# blueapi -c i22_blueapi_config.yaml controller run count '{"detectors":["saxs"]}'
+
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
 	print(dir_path)

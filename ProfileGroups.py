@@ -403,10 +403,10 @@ class Profile(BaseModel):
 @dataclass #pydantic dataclass
 class PandaTriggerConfig():
 
-	profiles: list
+	profiles: List[Profile]
 	instrument: str
 	experiment: str
-	detectors: list
+	detectors: List[str]
 
 	def __post_init__(self):
 
