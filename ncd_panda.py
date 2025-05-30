@@ -6,7 +6,7 @@ from typing import Annotated, Any
 import numpy as np
 
 from pydantic_core import from_json
-from pydantic import Field, NonNegativeFloat, validate_call
+from pydantic import NonNegativeFloat, validate_call
 
 
 from bluesky.run_engine import RunEngine
@@ -50,11 +50,6 @@ from ophyd_async.plan_stubs import (apply_panda_settings,
 
 from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
-from dodal.devices.oav.oav_detector import OAV
-
-from dodal.devices.areadetector.plugins.CAM import ColorMode
-from dodal.devices.oav.oav_parameters import OAVParameters
-
 
 
 from dodal.beamlines import module_name_for_beamline
@@ -76,8 +71,6 @@ PULSEBLOCKS = 4 #number of pulseblocks available for the panda, for standard pan
 GENERAL_TIMEOUT = 30 #seconds before each wait times out
 
 
-RE = RunEngine(call_returns_result=True) 
-
 class PANDA(Enum):
     Enable = "ONE"
     Disable = "ZERO"
@@ -88,7 +81,7 @@ def fly_and_collect_with_wait(
     flyer: StandardFlyer[SeqTableInfo] | StandardFlyer[PcompInfo],
     detectors: list[StandardDetector],
 ):
-    """Kickoff, complete and collect with a flyer and multiple detectors.
+    """Kickoff, complete and collect with a flyer and multiple detectors and wait breifly.
 
     This stub takes a flyer and one or more detectors that have been prepared. It
     declares a stream for the detectors, then kicks off the detectors and the flyer.
@@ -544,6 +537,8 @@ def show_deadtime(detector_deadtime, active_detector_names):
         print(f"deadtime for {dn} is {dt}")
         LOGGER.info(f"deadtime for {dn} is {dt}")
 
+
+
 # @attach_data_session_metadata_decorator() #only enable if can't update the path provider, otherwise updates twice
 @validate_call(config={"arbitrary_types_allowed": True})
 def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to run the scan on eg. i22 or b21."], 
@@ -667,6 +662,7 @@ def run_panda_triggering(panda: HDFPanda, active_detectors, active_pulses, group
 
 if __name__ == "__main__":
 
+    RE = RunEngine(call_returns_result=True) 
 
     #################################
 
@@ -686,8 +682,6 @@ if __name__ == "__main__":
     ###if TETRAMMS ARE NOT WORKING TRY TfgAcquisition() in gda to reset all malcolm stuff to defaults
 
 
-
-
     ###################################
     # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
@@ -696,9 +690,9 @@ if __name__ == "__main__":
     profile = configuration.profiles[1]
     # RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
 
-    for i in range(20):
+    # for i in range(20):
 
-        RE(configure_panda_triggering("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
+    RE(configure_panda_triggering("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
 
     # profile = configuration.profiles[2]
     # RE(setup_panda("i22"None, "cm40643-3/bluesky", profile, active_detector_names=["saxs", "i0"], force_load=False))

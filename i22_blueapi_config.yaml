@@ -23,4 +23,4 @@ stomp:
   enabled: true
   auth:
     username: i22
-    password:  "22i"
+    password:  $RABBITMQ_PASSWORD
