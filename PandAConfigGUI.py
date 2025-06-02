@@ -39,7 +39,7 @@ __author__ = 'Richard Dixey'
 ############################################################################################
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-BL_config = import_module(f"{BL}_config")
+BL_config = import_module(f"beamline_configs.{BL}_config")
 
 THEME_NAME = BL_config.THEME_NAME
 PULSEBLOCKS = BL_config.PULSEBLOCKS

@@ -65,7 +65,7 @@ from stubs.PandAStubs import (return_connected_device,
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-BL_config = import_module(f"{BL}_config")
+BL_config = import_module(f"beamline_configs.{BL}_config")
 
 DEADTIME_BUFFER = BL_config.DEADTIME_BUFFER
 DEFAULT_SEQ = BL_config.DEFAULT_SEQ
