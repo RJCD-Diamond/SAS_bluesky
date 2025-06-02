@@ -30,7 +30,7 @@ from stomp import Connection
 from ProfileGroups import Profile, Group, PandaTriggerConfig
 
 from PandAGUIElements import ProfileTab
-from planStubs.PandAStubs import return_connected_device
+from stubs.PandAStubs import return_connected_device
 
 
 __version__ = '0.2'

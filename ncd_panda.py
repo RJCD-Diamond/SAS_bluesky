@@ -54,7 +54,7 @@ from ProfileGroups import (Profile,
                            Group, 
                            PandaTriggerConfig)
 
-from planStubs.PandAStubs import (return_connected_device,
+from stubs.PandAStubs import (return_connected_device,
 								  return_module_name,
 								  make_beamline_devices,
                                   fly_and_collect_with_wait,
