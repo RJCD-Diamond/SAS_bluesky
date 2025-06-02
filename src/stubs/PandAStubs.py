@@ -19,13 +19,13 @@ from ophyd_async.fastcs.panda import (
     PcompInfo
 )
 
+from dodal.beamlines import module_name_for_beamline
+from dodal.utils import make_device, make_all_devices
 
 from dodal.devices.oav.oav_detector import OAV
 from dodal.devices.oav.oav_parameters import OAVParameters
 from dodal.devices.areadetector.plugins.CAM import ColorMode
 
-from dodal.beamlines import module_name_for_beamline
-from dodal.utils import make_device, make_all_devices
 
 
 
@@ -55,6 +55,7 @@ def return_module_name(beamline: str) -> str:
 
 
 def make_beamline_devices(beamline: str) -> list:
+    
     """
     Takes the name of a beamline and async creates all the devices for a beamline, whether they are connected or not. 
     """

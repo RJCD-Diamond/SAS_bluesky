@@ -21,8 +21,9 @@ from ophyd_async.fastcs.panda._block import PandaTimeUnits
 
 from dodal.utils import get_beamline_name
 
-from ProfileGroups import Profile, Group, PandaTriggerConfig
-from ncdcore import ncdcore
+from ProfileGroups import Profile, Group
+from utils.ncdcore import ncdcore
+
 
 
 

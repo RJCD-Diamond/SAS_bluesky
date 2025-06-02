@@ -19,15 +19,16 @@ from tkinter import filedialog as fd
 
 from dodal.utils import get_beamline_name
 
-from dodal.beamlines.i22 import panda1
-
-from blueapi.client.event_bus import EventBusClient
-from bluesky_stomp.messaging import StompClient, BasicAuthentication
+# from stomp import Connection
+# from blueapi.client.event_bus import EventBusClient
+# from bluesky_stomp.messaging import StompClient, BasicAuthentication
 from blueapi.client.client import BlueapiRestClient, BlueapiClient
 from blueapi.config import RestConfig, ConfigLoader, ApplicationConfig
-from stomp import Connection
 
-from ProfileGroups import Profile, Group, PandaTriggerConfig
+from ProfileGroups import Profile, Group, ProfileLoader
+
+# from ProfileGroups import Profile, Group, ProfileLoader
+
 
 from PandAGUIElements import ProfileTab
 from stubs.PandAStubs import return_connected_device
@@ -78,7 +79,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 			self.notebook.forget(self.add_frame)
 
-			default_configuration = PandaTriggerConfig.read_from_yaml(self.default_config_path)
+			default_configuration = ProfileLoader.read_from_yaml(self.default_config_path)
 			# default_configuration.profiles[0].group_id = len(self.configuration.profiles)
 			profile = default_configuration.profiles[0]
 
@@ -386,9 +387,9 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"profile_yamls","default_panda_config.yaml")
 		
 		if self.panda_config_yaml == None:
-			self.configuration = PandaTriggerConfig.read_from_yaml(self.default_config_path)
+			self.configuration = ProfileLoader.read_from_yaml(self.default_config_path)
 		else:
-			self.configuration = PandaTriggerConfig.read_from_yaml(self.panda_config_yaml)
+			self.configuration = ProfileLoader.read_from_yaml(self.panda_config_yaml)
 
 		
 		if self.configuration.experiment == None:

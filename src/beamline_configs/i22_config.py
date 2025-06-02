@@ -1,6 +1,6 @@
 """
 
-Parameters for i22 PandA beamline
+Configuration for i22 PandA beamline
 
 """
 
@@ -53,3 +53,4 @@ PULSE_CONNECTIONS = {1: [TTLOUT[2]],
 DEADTIME_BUFFER = 20e-6 #Buffer added to deadtime to handle minor discrepencies between detector and panda clocks
 DEFAULT_SEQ = 1 #default sequencer is this one, pandas can have 2
 GENERAL_TIMEOUT = 30 #seconds before each wait times out
+CONFIG_NAME = "PandaTrigger"

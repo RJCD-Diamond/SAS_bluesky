@@ -50,11 +50,11 @@ from dodal.common.beamlines.beamline_utils import (
     get_path_provider,
     set_path_provider)
 
-from ProfileGroups import (Profile, 
+from .ProfileGroups import (Profile, 
                            Group, 
-                           PandaTriggerConfig)
+                           ProfileLoader)
 
-from stubs.PandAStubs import (return_connected_device,
+from .stubs.PandAStubs import (return_connected_device,
 								  return_module_name,
 								  make_beamline_devices,
                                   fly_and_collect_with_wait,
@@ -71,6 +71,7 @@ DEADTIME_BUFFER = BL_config.DEADTIME_BUFFER
 DEFAULT_SEQ = BL_config.DEFAULT_SEQ
 GENERAL_TIMEOUT = BL_config.GENERAL_TIMEOUT
 PULSEBLOCKS = BL_config.PULSEBLOCKS
+CONFIG_NAME = BL_config.CONFIG_NAME
 
 
 class PANDA(Enum):
@@ -79,7 +80,7 @@ class PANDA(Enum):
 
 
 
-def wait_until_complete(pv_obj, waiting_value=0, timeout=300):
+def wait_until_complete(pv_obj, waiting_value=0, timeout=None):
     """
     An async wrapper for the ophyd async wait_for_value function, to allow it to run inside the bluesky run engine
     Typical use case is waiting for an active pv to change to 0, indicating that the run has finished, which then allows the
@@ -87,7 +88,7 @@ def wait_until_complete(pv_obj, waiting_value=0, timeout=300):
     """
 
     async def _wait():
-        await wait_for_value(pv_obj, waiting_value, timeout=None)
+        await wait_for_value(pv_obj, waiting_value, timeout=timeout)
 
     yield from bps.wait_for([_wait])
 
@@ -327,7 +328,18 @@ def prepare_pulses(panda: HDFPanda):
 
 def check_and_apply_panda_settings(panda: HDFPanda, panda_name: str) -> MsgGenerator:
 
-    CONFIG_NAME = 'PandaTrigger'
+    """
+    
+    Checks the settings currently on the PandA - if different they will be overwritten with the ones
+
+    specified in the CONFIG_NAME 
+
+    Settings may have changed due to Malcolm or someone chnaging things in EPICS which might prevent the plan from running
+
+    This mitigates that
+    
+    """
+    
 
     yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls") #this is the directory where the yaml files are stored
     yaml_file_name = f"{BL}_{CONFIG_NAME}_{panda_name}"
@@ -373,6 +385,12 @@ def multiple_pulse_blocks():
 
 def show_deadtime(detector_deadtime, active_detector_names):
 
+    """
+    
+    Takes two iterables, detetors deadtimes and detector names, and prints the deadtimes in the log
+
+    """
+
     for dt, dn in zip(detector_deadtime, active_detector_names):
         print(f"deadtime for {dn} is {dt}")
         LOGGER.info(f"deadtime for {dn} is {dt}")
@@ -388,6 +406,15 @@ def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to
     run_immediately: bool = True,
     panda_name="panda1", 
     force_load=True) -> MsgGenerator[None]:
+
+
+    """
+    
+    This plans configures the panda and the detectors, setting them up for hardware triggering, loads all of the correct
+
+    settings and then may or may not run the flyscanning
+    
+    """
 
     if isinstance(profile, str):
         profile = Profile.model_validate(from_json(profile, allow_partial=True)) #convert from json to Profile object
@@ -474,6 +501,13 @@ def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to
 @bpp.run_decorator() #    # open/close run
 @validate_call(config={"arbitrary_types_allowed": True})
 def run_panda_triggering(panda: HDFPanda, active_detectors, active_pulses, group="run") -> MsgGenerator[None]:
+
+
+    """
+    
+    This will run whatever flyscanning settings are currenly loaded on the PandA and start it triggering
+    
+    """
     
     trigger_logic = StaticSeqTableTriggerLogic(panda.seq[DEFAULT_SEQ]) #flyer and prepare fly, sets the sequencers table
     flyer = StandardFlyer(trigger_logic) #flyer and prepare fly, sets the sequencers table
@@ -524,7 +558,7 @@ if __name__ == "__main__":
     # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
     default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"profile_yamls","panda_config.yaml")
-    configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
+    configuration = ProfileLoader.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
     # RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))
 

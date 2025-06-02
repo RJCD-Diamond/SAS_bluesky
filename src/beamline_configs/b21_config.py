@@ -55,3 +55,5 @@ PULSE_CONNECTIONS = {1: [TTLOUT[1]],
 DEADTIME_BUFFER = 20e-6 #Buffer added to deadtime to handle minor discrepencies between detector and panda clocks
 DEFAULT_SEQ = 2 #default sequencer is this one, b21 currently uses seq 1 for somthing else
 GENERAL_TIMEOUT = 30 #seconds before each wait times out
+
+CONFIG_NAME = "PandaTriggerWithCounterAndPCAP"

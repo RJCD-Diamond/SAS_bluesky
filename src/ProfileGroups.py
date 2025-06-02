@@ -19,7 +19,7 @@ from pydantic_core import from_json
 from pydantic.dataclasses import dataclass
 from typing import List, Any
 
-from ncdcore import ncdcore
+from utils.ncdcore import ncdcore
 
 
 """
@@ -39,7 +39,7 @@ HDFPanda:
 
 """
 
-Group and Profile dataclasses
+Group and Profile BaseModels
 
 """
 
@@ -401,7 +401,7 @@ class Profile(BaseModel):
 	
 
 @dataclass #pydantic dataclass
-class PandaTriggerConfig():
+class ProfileLoader():
 
 	profiles: List[Profile]
 	instrument: str
@@ -477,7 +477,7 @@ class PandaTriggerConfig():
 
 				profiles.append(n_profile)
 
-			self = PandaTriggerConfig(profiles, instrument, experiment, detectors)
+			self = ProfileLoader(profiles, instrument, experiment, detectors)
 
 			return self
 		
@@ -564,7 +564,6 @@ if __name__ == "__main__":
 	
 	P = Profile()
 	P.append_group(Group(frames=1, wait_time=1, wait_units="S", run_time=1, run_units="S", pause_trigger="False", wait_pulses=[0,0,0,0], run_pulses=[1,1,1,1]))
-	print(P)
 
 	json_schema = P.model_dump_json()
     
