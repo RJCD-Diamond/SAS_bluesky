@@ -9,6 +9,7 @@ Python Elements for NCD PandA config GUI
 
 from pathlib import Path
 import os
+from importlib import import_module
 
 import tkinter as tk
 from tkinter import ttk
@@ -16,15 +17,13 @@ from tkinter import ttk
 from ophyd_async.fastcs.panda import (
 	SeqTrigger,
 )
-
 from ophyd_async.fastcs.panda._block import PandaTimeUnits
-from dodal.utils import get_beamline_name
 
+from dodal.utils import get_beamline_name
 
 from ProfileGroups import Profile, Group, PandaTriggerConfig
 from ncdcore import ncdcore
 
-from importlib import import_module
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])

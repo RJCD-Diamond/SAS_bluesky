@@ -428,6 +428,10 @@ class PandaTriggerConfig():
 					config = yaml.full_load(file)
 				except TypeError:
 					print("Must be a yaml file")
+			
+			if not os.path.exists(config_filepath):
+				raise FileNotFoundError(f"Cannot find file: {config_filepath}")
+
 		
 			instrument = config["instrument"]
 			experiment = config["experiment"]
@@ -464,14 +468,6 @@ class PandaTriggerConfig():
 									run_pulses=group["run_pulses"])
 					
 					group_list.append(n_Group)
-
-
-				# if not out_trigger in Profile.outputs():
-				# 	print("Not a valgroup_id out trigger")
-				# 	quit()
-				# if not profile_trigger in Profile.seq_triggers():
-				# 	print("Not a valgroup_id in trigger")
-				# 	quit()
 
 				n_profile = Profile(profile_id=p, 
 						cycles=profile_cycles, 

@@ -11,15 +11,13 @@ from pydantic import NonNegativeFloat, validate_call
 
 
 from bluesky.run_engine import RunEngine
-from bluesky.utils import MsgGenerator, short_uid
+from bluesky.utils import MsgGenerator
 import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
 
 from dodal.log import LOGGER
-from dodal.utils import make_device, make_all_devices, get_beamline_name
+from dodal.utils import get_beamline_name
 from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
-
-from ophyd_async.plan_stubs._wait_for_awaitable import wait_for_awaitable
 
 from ophyd_async.core import (
     DetectorTrigger,
@@ -27,8 +25,7 @@ from ophyd_async.core import (
     StandardFlyer,
     TriggerInfo,
 	wait_for_value,
-	AsyncStatus,
-	YamlSettingsProvider)
+	AsyncStatus)
 
 
 from ophyd_async.fastcs.panda import (
@@ -41,17 +38,13 @@ from ophyd_async.fastcs.panda import (
     PcompInfo,
 )
 
-from ophyd_async.plan_stubs import (apply_panda_settings, 
-									retrieve_settings, 
-									store_settings,
-									ensure_connected,
+from ophyd_async.plan_stubs import (ensure_connected,
                                     get_current_settings)
 
 
 # from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
 # from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
 
-from dodal.beamlines import module_name_for_beamline
 from dodal.common import inject
 from dodal.common.beamlines.beamline_utils import (
     get_path_provider,
@@ -61,6 +54,15 @@ from ProfileGroups import (Profile,
                            Group, 
                            PandaTriggerConfig)
 
+from planStubs.PandAStubs import (return_connected_device,
+								  return_module_name,
+								  make_beamline_devices,
+                                  fly_and_collect_with_wait,
+                                  load_settings_from_yaml,
+                                  upload_yaml_to_panda,
+                                  save_device_to_yaml)
+								  
+
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
 module = import_module(f"{BL}_parameters")
@@ -68,89 +70,13 @@ module = import_module(f"{BL}_parameters")
 DEADTIME_BUFFER = module.DEADTIME_BUFFER
 DEFAULT_SEQ = module.DEFAULT_SEQ
 GENERAL_TIMEOUT = module.GENERAL_TIMEOUT
+PULSEBLOCKS = module.PULSEBLOCKS
+
 
 class PANDA(Enum):
     Enable = "ONE"
     Disable = "ZERO"
 
-
-def fly_and_collect_with_wait(
-    stream_name: str,
-    flyer: StandardFlyer[SeqTableInfo] | StandardFlyer[PcompInfo],
-    detectors: list[StandardDetector],
-):
-    """Kickoff, complete and collect with a flyer and multiple detectors and wait breifly.
-
-    This stub takes a flyer and one or more detectors that have been prepared. It
-    declares a stream for the detectors, then kicks off the detectors and the flyer.
-    The detectors are collected until the flyer and detectors have completed.
-
-    see also from ophyd_async.plan_stubs import fly_and_collect
-
-    """
-    yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
-    yield from bps.kickoff(flyer, wait=True)
-    for detector in detectors:
-        yield from bps.kickoff(detector)
-
-    # collect_while_completing
-    group = short_uid(label="complete")
-
-    yield from bps.complete(flyer, wait=False, group=group)
-    for detector in detectors:
-        yield from bps.complete(detector, wait=False, group=group)
-
-    done = False
-    while not done:
-        try:
-            yield from bps.wait(group=group, timeout=1)
-        except TimeoutError:
-            pass
-        else:
-            done = True
-        yield from bps.collect(
-            *detectors,
-            return_payload=False,
-            name=stream_name,
-        )
-    yield from bps.wait(group=group)
-    yield from bps.sleep(2)
-
-
-
-def return_connected_device(beamline: str, device_name: str) -> StandardDetector:
-    """
-    Connect to a device on the specified beamline and return the connected device.
-
-    Args:
-        beamline (str): Name of the beamline.
-        device_name (str): Name of the device to connect to.
-
-    Returns:
-        StandardDetector: The connected device.
-    """
-    module_name = module_name_for_beamline(beamline)
-    devices = make_device(f"dodal.beamlines.{module_name}", device_name, connect_immediately=True)
-    return devices[device_name]
-
-def return_module_name(beamline: str) -> str:
-    """
-    Takes the name of a beamline, and returns the name of the Dodal module where all the devices for that module are stored
-    """
-    
-    module_name = module_name_for_beamline(beamline)
-    return f"dodal.beamlines.{module_name}"
-
-
-def make_beamline_devices(beamline: str) -> list:
-    """
-    Takes the name of a beamline and async creates all the devices for a beamline, whether they are connected or not. 
-    """
-
-    module = return_module_name(beamline)
-    beamline_devices = make_all_devices(module)[0]
-
-    return beamline_devices
 
 
 def wait_until_complete(pv_obj, waiting_value=0, timeout=300):
@@ -188,49 +114,6 @@ def set_experiment_directory(beamline: str, visit_path: Path):
     yield from bps.wait_for([set_panda_dir])
 
 
-def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
-
-    provider = YamlSettingsProvider(yaml_directory)
-    settings = yield from wait_for_awaitable(provider.retrieve(yaml_file_name))
-
-    return settings
-
-
-# def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
-
-#     settings = yield from retrieve_settings(provider, yaml_file_name, panda)
-#     yield from apply_panda_settings(settings)
-
-
-def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> None:
-
-    """
-    
-    Takes a folder of the directory where the yaml is saved, the name of the yaml file and the panda we want 
-
-    to apply the settings to, and uploaded the ophyd async settings pv yaml to the panda
-    
-    """
-
-    provider = YamlSettingsProvider(yaml_directory)
-    settings = yield from retrieve_settings(provider, yaml_file_name, panda)
-    yield from apply_panda_settings(settings)
-	
-
-def save_device_to_yaml(yaml_directory: str, yaml_file_name: str, device) -> MsgGenerator:
-
-    """
-    
-    Takes a folder of the directory where the yaml will be saved, the name of the yaml file and the panda we want 
-
-    then saves the ophyd async pv yaml to the given path
-    
-    """
-
-    provider = YamlSettingsProvider(yaml_directory)
-    yield from store_settings(provider, yaml_file_name, device)
-
-
 
 def modify_panda_seq_table(panda: HDFPanda, profile: Profile, n_seq=1):
 
@@ -246,7 +129,6 @@ def modify_panda_seq_table(panda: HDFPanda, profile: Profile, n_seq=1):
     n_cycles = profile.cycles
     time_unit = profile.best_time_unit
     
-
     group = "modify-seq"
     # yield from bps.stage(panda, group=group) ###maybe need this
     yield from bps.abs_set(panda.seq[int(n_seq)].table, seq_table, group=group)
@@ -350,39 +232,6 @@ def setup_oav(oav: OAV,  parameters: OAVParameters, group="oav_setup"):
     yield from bps.abs_set(oav.cam.acquire_time, parameters.exposure, group=group)
     yield from bps.abs_set(oav.cam.gain, parameters.gain, group=group)
 
-    # zoom_level_str = f"{float(parameters.zoom)}x"
-    # yield from bps.abs_set(
-    #     oav.zoom_controller,
-    #     zoom_level_str,
-    #     wait=True,
-    # )
-
-# def setup_pilatus(pilatus: PilatusDetector, trigger_info: TriggerInfo, group="setup_pilatus"):
-
-#     yield from bps.stage(pilatus, group=group, wait=False) #this sets the HDF capture mode to active, MUST BE DONE FIRST
-#     yield from bps.prepare(pilatus, trigger_info, wait=False, group=group) ###this tells the detector how may triggers to expect and sets the CAN aquire on
-
-
-# def setup_pilatus_trigger(saxs):
-
-#     """
-    
-#     IF HDF capture is set to stream, and lazy and capture is on,  
-
-#     If acquire is on then it will accept the number of triggers before dumping data.
-    
-#     """
-        
-#     # trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
-#     yield from bps.abs_set(saxs.driver.trigger_mode, PilatusTriggerMode.EXT_TRIGGER)
-
-#     print(saxs.driver)
-#     # yield from bps.abs_set(saxs.driver.armed, "Armed")
-#     # BL22I-EA-PILAT-01:CAM:Acquire
-#     armed = yield from bps.rd(saxs.driver.armed)
-#     trigger_mode = yield from bps.rd(saxs.driver.trigger_mode)
-    
-#     desc = saxs._metadata_holder.description
 
 
 def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, trigger_info: TriggerInfo, group="det_atm"):
