@@ -65,12 +65,12 @@ from stubs.PandAStubs import (return_connected_device,
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-BL_par = import_module(f"{BL}_parameters")
+BL_config = import_module(f"{BL}_config")
 
-DEADTIME_BUFFER = BL_par.DEADTIME_BUFFER
-DEFAULT_SEQ = BL_par.DEFAULT_SEQ
-GENERAL_TIMEOUT = BL_par.GENERAL_TIMEOUT
-PULSEBLOCKS = BL_par.PULSEBLOCKS
+DEADTIME_BUFFER = BL_config.DEADTIME_BUFFER
+DEFAULT_SEQ = BL_config.DEFAULT_SEQ
+GENERAL_TIMEOUT = BL_config.GENERAL_TIMEOUT
+PULSEBLOCKS = BL_config.PULSEBLOCKS
 
 
 class PANDA(Enum):

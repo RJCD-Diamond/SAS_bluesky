@@ -27,15 +27,15 @@ from ncdcore import ncdcore
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-BL_par = import_module(f"{BL}_parameters")
+BL_config = import_module(f"{BL}_config")
 
-PULSEBLOCKS = BL_par.PULSEBLOCKS
-THEME_NAME = BL_par.THEME_NAME
-PULSEBLOCKASENTRYBOX = BL_par.PULSEBLOCKASENTRYBOX
-PULSE_BLOCK_NAMES = BL_par.PULSE_BLOCK_NAMES
+PULSEBLOCKS = BL_config.PULSEBLOCKS
+THEME_NAME = BL_config.THEME_NAME
+PULSEBLOCKASENTRYBOX = BL_config.PULSEBLOCKASENTRYBOX
+PULSE_BLOCK_NAMES = BL_config.PULSE_BLOCK_NAMES
 
-TTLIN = BL_par.TTLIN
-TTLOUT = BL_par.TTLOUT
+TTLIN = BL_config.TTLIN
+TTLOUT = BL_config.TTLOUT
 
 
 class EditableTableview(ttk.Treeview):
