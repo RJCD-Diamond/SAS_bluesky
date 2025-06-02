@@ -1,1 +1,1 @@
-SCM_bluesky is a repo for Soft Condensed Matter beamlines at Diamond Light Source
+SAS_bluesky is a repo for Small Angle Scattering beamlines at Diamond Light Source
