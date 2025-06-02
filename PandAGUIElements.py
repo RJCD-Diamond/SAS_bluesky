@@ -8,6 +8,7 @@ Python Elements for NCD PandA config GUI
 """
 
 from pathlib import Path
+import os
 
 import tkinter as tk
 from tkinter import ttk
@@ -17,11 +18,23 @@ from ophyd_async.fastcs.panda import (
 )
 
 from ophyd_async.fastcs.panda._block import PandaTimeUnits
+from dodal.utils import get_beamline_name
+
 
 from ProfileGroups import Profile, Group, PandaTriggerConfig
 from ncdcore import ncdcore
 
-from i22_parameters import PULSEBLOCKS, PULSEBLOCKASENTRYBOX, PULSE_BLOCK_NAMES
+from importlib import import_module
+
+
+BL = get_beamline_name(os.environ['BEAMLINE'])
+module = import_module(f"{BL}_parameters")
+
+PULSEBLOCKS = module.PULSEBLOCKS
+THEME_NAME = module.THEME_NAME
+PULSEBLOCKASENTRYBOX = module.PULSEBLOCKASENTRYBOX
+PULSE_BLOCK_NAMES = module.PULSE_BLOCK_NAMES
+
 
 class EditableTableview(ttk.Treeview):
 	

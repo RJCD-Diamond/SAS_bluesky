@@ -2,8 +2,9 @@ import os
 from enum import Enum
 from datetime import datetime
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 import numpy as np
+from importlib import import_module
 
 from pydantic_core import from_json
 from pydantic import NonNegativeFloat, validate_call
@@ -15,7 +16,7 @@ import bluesky.plan_stubs as bps
 import bluesky.preprocessors as bpp
 
 from dodal.log import LOGGER
-from dodal.utils import make_device, make_all_devices, get_run_number
+from dodal.utils import make_device, make_all_devices, get_beamline_name
 from dodal.common.visit import RemoteDirectoryServiceClient, StaticVisitPathProvider
 
 from ophyd_async.plan_stubs._wait_for_awaitable import wait_for_awaitable
@@ -44,13 +45,11 @@ from ophyd_async.plan_stubs import (apply_panda_settings,
 									retrieve_settings, 
 									store_settings,
 									ensure_connected,
-                                    get_current_settings, 
-                                    fly_and_collect)
+                                    get_current_settings)
 
 
-from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
-from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
-
+# from dodal.beamlines.i22 import saxs, waxs, i0, it, TetrammDetector, panda1
+# from dodal.plan_stubs.data_session import attach_data_session_metadata_decorator
 
 from dodal.beamlines import module_name_for_beamline
 from dodal.common import inject
@@ -63,13 +62,12 @@ from ProfileGroups import (Profile,
                            PandaTriggerConfig)
 
 
-#: Buffer added to deadtime to handle minor discrepencies between detector
-#: and panda clocks
-DEADTIME_BUFFER = 20e-6
-DEFAULT_SEQ = 1 #default sequencer is this one, pandas can have 2
-PULSEBLOCKS = 4 #number of pulseblocks available for the panda, for standard panda this is 4
-GENERAL_TIMEOUT = 30 #seconds before each wait times out
+BL = get_beamline_name(os.environ['BEAMLINE'])
+module = import_module(f"{BL}_parameters")
 
+DEADTIME_BUFFER = module.DEADTIME_BUFFER
+DEFAULT_SEQ = module.DEFAULT_SEQ
+GENERAL_TIMEOUT = module.GENERAL_TIMEOUT
 
 class PANDA(Enum):
     Enable = "ONE"
@@ -86,6 +84,8 @@ def fly_and_collect_with_wait(
     This stub takes a flyer and one or more detectors that have been prepared. It
     declares a stream for the detectors, then kicks off the detectors and the flyer.
     The detectors are collected until the flyer and detectors have completed.
+
+    see also from ophyd_async.plan_stubs import fly_and_collect
 
     """
     yield from bps.declare_stream(*detectors, name=stream_name, collect=True)
@@ -685,7 +685,7 @@ if __name__ == "__main__":
     ###################################
     # Profile(id=0, cycles=1, in_trigger='IMMEDIATE', out_trigger='TTLOUT1', groups=[Group(id=0, frames=1, wait_time=100, wait_units='ms', run_time=100, run_units='ms', wait_pause=False, run_pause=False, wait_pulses=[1, 0, 0, 0, 0, 0, 0, 0], run_pulses=[0, 0, 0, 0, 0, 0, 0, 0])], multiplier=[1, 2, 4, 8, 16])
 
-    default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"panda_config.yaml")
+    default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"profile_yamls","panda_config.yaml")
     configuration = PandaTriggerConfig.read_from_yaml(default_config_path)
     profile = configuration.profiles[1]
     # RE(setup_panda("i22", "cm40643-3/bluesky", profile, active_detector_names=["saxs", "waxs", "i0", "it"], force_load=False))

@@ -11,12 +11,13 @@ import os
 import yaml
 import matplotlib.pyplot as plt
 from pathlib import Path
+from importlib import import_module
 
 import tkinter as tk
 from tkinter import ttk
 from tkinter import filedialog as fd
 
-from dodal.utils import BeamlinePrefix, get_beamline_name
+from dodal.utils import get_beamline_name
 
 from dodal.beamlines.i22 import panda1
 
@@ -31,21 +32,26 @@ from ProfileGroups import Profile, Group, PandaTriggerConfig
 from PandAGUIElements import ProfileTab
 
 
-from i22_parameters import PULSEBLOCKS, THEME_NAME, BL
-
 __version__ = '0.2'
 __author__ = 'Richard Dixey'
 
 ############################################################################################
 
+BL = get_beamline_name(os.environ['BEAMLINE'])
+module = import_module(f"{BL}_parameters")
 
-try:
-	BL = get_beamline_name(os.environ['BEAMLINE'])
-except:
-	BL = BL
+THEME_NAME = module.THEME_NAME
+PULSEBLOCKS = module.PULSEBLOCKS
+THEME_NAME = module.THEME_NAME
 
+TTLIN = module.TTLIN
+TTLOUT = module.TTLOUT
+LVDSIN = module.LVDSIN
+LVDSOUT = module.LVDSOUT
 
- ##################################################################
+PULSE_CONNECTIONS = module.PULSE_CONNECTIONS
+
+##################################################################
 
 def return_connected_device(beamline: str, device_name: str):
     """
@@ -62,30 +68,6 @@ def return_connected_device(beamline: str, device_name: str):
     devices = make_device(f"dodal.beamlines.{module_name}", device_name, connect_immediately=True)
     return devices[device_name]
 
-class PandaIO():
-
-	def __init__(self, yaml_config):
-
-		with open(yaml_config, 'rb') as file:
-			print("Using config:",yaml_config)
-
-			if yaml_config.endswith('.yaml') or yaml_config.endswith('.yml'):
-				try:
-					self.wiring_config = yaml.full_load(file)
-				except TypeError:
-					print("Must be a yaml file")
-
-		self.TTLIN = self.wiring_config["TTLIN"]
-		self.TTLOUT = self.wiring_config["TTLOUT"]
-		self.LVDSIN= self.wiring_config["LVDSIN"]
-		self.LVDSOUT = self.wiring_config["LVDSOUT"]
-		self.PulseBlocks = self.wiring_config["PulseBlocks"]
-
-
-##################################################################
-
-default_ioconfig = os.path.join(os.path.dirname(os.path.realpath(__file__)),BL+"_panda_wiring.yaml")
-BeamlinePandaIO = PandaIO(default_ioconfig)
 
 
 ############################################################################################
@@ -105,7 +87,6 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		# self.window.tk.eval(self.theme_dir)
 		# self.window.tk.call("package", "require", theme_name)
-		# --> ('awlight', 'clam', 'alt', 'default', 'awdark', 'classic')
 
 	def add_profile_tab(self, event):
 
@@ -247,26 +228,26 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 		labels= ["TTLIN", "LVDSIN","TTLOUT", "LVDSOUT"]
 
-		for key in self.BeamlinePandaIO.TTLIN.keys():
-			INDev = self.BeamlinePandaIO.TTLIN[key]
+		for key in TTLIN.keys():
+			INDev = TTLIN[key]
 
 			ax.scatter(0, key, color='k',s=50)
 			ax.text(0+0.1, key, INDev)
 
-		for key in self.BeamlinePandaIO.LVDSIN.keys():
-			LVDSINDev = self.BeamlinePandaIO.LVDSIN[key]
+		for key in LVDSIN.keys():
+			LVDSINDev = LVDSIN[key]
 
 			ax.scatter(1, key, color='k',s=50)
 			ax.text(1+0.1, key, LVDSINDev)
 
-		for key in self.BeamlinePandaIO.TTLOUT.keys():
-			TTLOUTDev = self.BeamlinePandaIO.TTLOUT[key]
+		for key in TTLOUT.keys():
+			TTLOUTDev = TTLOUT[key]
 
 			ax.scatter(2, key, color='b',s=50)
 			ax.text(2+0.1, key, TTLOUTDev)
 
-		for key in self.BeamlinePandaIO.LVDSOUT.keys():
-			LVDSOUTDev = self.BeamlinePandaIO.LVDSOUT[key]
+		for key in LVDSOUT.keys():
+			LVDSOUTDev = LVDSOUT[key]
 			ax.scatter(3, key, color='b',s=50)
 			ax.text(3+0.1, key, LVDSOUTDev)
 
@@ -385,20 +366,15 @@ class PandaConfigBuilderGUI(tk.Tk):
 			TTLLabel = ttk.Label(active_detectors_frame_n, text =f"TTL:")
 			TTLLabel.grid(column =0, row = 1, padx = 5,pady = 5 ,sticky="w" )
 
-			for n, det in enumerate(self.BeamlinePandaIO.PulseBlocks[pulse+1]["TTLOUT"]):
-
-				det_name = self.BeamlinePandaIO.TTLOUT[det]
-
-				Outlabel = ttk.Label(active_detectors_frame_n, text =f"Out: {det}")
-				Outlabel.grid(column =n+1, row = 0, padx = 5,pady = 5 ,sticky="w" )
+			for n, det in enumerate(PULSE_CONNECTIONS[pulse+1]):
 
 				experiment_var = tk.StringVar(value=self.configuration.experiment)
 
-				if (det_name.lower() == "fs") or ("shutter" in det_name.lower()):
-					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det_name, state='disabled')
+				if (det.lower() == "fs") or ("shutter" in det.lower()):
+					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det, state='disabled')
 					ad_entry.select()
 				else:
-					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det_name)
+					ad_entry = tk.Checkbutton(active_detectors_frame_n, bd =1, text=det)
 
 				ad_entry.grid(column = n+1, row = 1, padx = 5,pady = 5 ,sticky="w" )
 
@@ -415,7 +391,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 		if os.environ.get('USER') != "akz63626": #check if I am runing this
 
 			try:
-				self.panda = return_connected_device("i22", "panda1")
+				self.panda = return_connected_device(BL, "panda1")
 			except:
 				answer = tk.messagebox.askyesno("PandA not Connected", "PandA is not connected, if you continue things will not work. Continue?")
 				if answer:
@@ -425,7 +401,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 
 
 		self.panda_config_yaml = panda_config_yaml
-		self.default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"default_panda_config.yaml")
+		self.default_config_path = os.path.join(os.path.dirname(os.path.realpath(__file__)),"profile_yamls","default_panda_config.yaml")
 		
 		if self.panda_config_yaml == None:
 			self.configuration = PandaTriggerConfig.read_from_yaml(self.default_config_path)
@@ -440,11 +416,7 @@ class PandaConfigBuilderGUI(tk.Tk):
 			self.configuration.experiment = user_input
 
 
-		self.default_ioconfig = os.path.join(os.path.dirname(os.path.realpath(__file__)),BL+"_panda_wiring.yaml")
-		self.BeamlinePandaIO = PandaIO(self.default_ioconfig)
-
 		self.profiles = self.configuration.profiles
-
 
 		self.window = tk.Tk()
 		self.window.resizable(1,1)
@@ -538,6 +510,6 @@ if __name__ == '__main__':
 
 	dir_path = os.path.dirname(os.path.realpath(__file__))
 	print(dir_path)
-	config_filepath = os.path.join(dir_path,"panda_config.yaml")
+	config_filepath = os.path.join(dir_path,"profile_yamls","panda_config.yaml")
 	PandaConfigBuilderGUI(config_filepath)
 
