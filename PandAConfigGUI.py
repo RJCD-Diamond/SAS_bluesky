@@ -30,6 +30,7 @@ from stomp import Connection
 from ProfileGroups import Profile, Group, PandaTriggerConfig
 
 from PandAGUIElements import ProfileTab
+from planStubs.PandAStubs import return_connected_device
 
 
 __version__ = '0.2'
@@ -38,37 +39,18 @@ __author__ = 'Richard Dixey'
 ############################################################################################
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-module = import_module(f"{BL}_parameters")
+BL_par = import_module(f"{BL}_parameters")
 
-THEME_NAME = module.THEME_NAME
-PULSEBLOCKS = module.PULSEBLOCKS
-THEME_NAME = module.THEME_NAME
+THEME_NAME = BL_par.THEME_NAME
+PULSEBLOCKS = BL_par.PULSEBLOCKS
+THEME_NAME = BL_par.THEME_NAME
 
-TTLIN = module.TTLIN
-TTLOUT = module.TTLOUT
-LVDSIN = module.LVDSIN
-LVDSOUT = module.LVDSOUT
+TTLIN = BL_par.TTLIN
+TTLOUT = BL_par.TTLOUT
+LVDSIN = BL_par.LVDSIN
+LVDSOUT = BL_par.LVDSOUT
 
-PULSE_CONNECTIONS = module.PULSE_CONNECTIONS
-
-##################################################################
-
-def return_connected_device(beamline: str, device_name: str):
-    """
-    Connect to a device on the specified beamline and return the connected device.
-
-    Args:
-        beamline (str): Name of the beamline.
-        device_name (str): Name of the device to connect to.
-
-    Returns:
-        StandardDetector: The connected device.
-    """
-    module_name = module_name_for_beamline(beamline)
-    devices = make_device(f"dodal.beamlines.{module_name}", device_name, connect_immediately=True)
-    return devices[device_name]
-
-
+PULSE_CONNECTIONS = BL_par.PULSE_CONNECTIONS
 
 ############################################################################################
 
@@ -201,12 +183,12 @@ class PandaConfigBuilderGUI(tk.Tk):
 		self.seq_table = profile_to_upload.seq_table()
 
 		try:
-			run_upload_yaml_to_panda(beamline='i22')
+			self.client.run_plan("setup_panda")
 		except:
 			print("could not upload yaml to panda")
 
 		try:
-			run_modify_panda_seq_table('i22', "panda1", self.seq_table, n_seq=1)
+			self.client.run_plan("setup_panda")
 		except:
 			print("could not modify panda seq table")
 

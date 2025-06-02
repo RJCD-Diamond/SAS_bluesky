@@ -27,12 +27,15 @@ from ncdcore import ncdcore
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-module = import_module(f"{BL}_parameters")
+BL_par = import_module(f"{BL}_parameters")
 
-PULSEBLOCKS = module.PULSEBLOCKS
-THEME_NAME = module.THEME_NAME
-PULSEBLOCKASENTRYBOX = module.PULSEBLOCKASENTRYBOX
-PULSE_BLOCK_NAMES = module.PULSE_BLOCK_NAMES
+PULSEBLOCKS = BL_par.PULSEBLOCKS
+THEME_NAME = BL_par.THEME_NAME
+PULSEBLOCKASENTRYBOX = BL_par.PULSEBLOCKASENTRYBOX
+PULSE_BLOCK_NAMES = BL_par.PULSE_BLOCK_NAMES
+
+TTLIN = BL_par.TTLIN
+TTLOUT = BL_par.TTLOUT
 
 
 class EditableTableview(ttk.Treeview):
@@ -86,11 +89,6 @@ class EditableTableview(ttk.Treeview):
 		elif column in ["#7"]: #these groups create a drop down menu
 
 			# place dropdown popup properly
-
-			TTLIN = list(BeamlinePandaIO.TTLIN)
-			TTLIN = [f"TTLIN{f}" for f in TTLIN]
-			LVDSIN = list(BeamlinePandaIO.LVDSIN)
-			LVDSIN = [f"LVDSIN{f}" for f in LVDSIN]
 
 			options = list(SeqTrigger.__dict__["_member_names_"])
 
@@ -509,9 +507,9 @@ class ProfileTab(ttk.Frame):
 		self.profile.plot_triggering()
 
 
-	def focus_out_generate_info_boxes(event):
+	# def focus_out_generate_info_boxes(event):
 	    
-		self.generate_info_boxes()
+	# 	self.generate_info_boxes()
 
 	def __init__(self, parent, notebook, configuration, n_profile):
 
@@ -571,7 +569,7 @@ class ProfileTab(ttk.Frame):
 		cycles_entry = tk.Entry(self, bd =1, width=15, textvariable=self.n_cycles_entry_value)
 		cycles_entry.grid(column = 1, row = 1, padx = 5,pady = 5 ,sticky="w" )
 
-		cycles_entry.bind("<FocusOut>", self.focus_out_generate_info_boxes)
+		# cycles_entry.bind("<FocusOut>", self.focus_out_generate_info_boxes)
 
 
 		############# plot button

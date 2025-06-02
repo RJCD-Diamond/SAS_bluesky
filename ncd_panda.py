@@ -65,12 +65,12 @@ from planStubs.PandAStubs import (return_connected_device,
 
 
 BL = get_beamline_name(os.environ['BEAMLINE'])
-module = import_module(f"{BL}_parameters")
+BL_par = import_module(f"{BL}_parameters")
 
-DEADTIME_BUFFER = module.DEADTIME_BUFFER
-DEFAULT_SEQ = module.DEFAULT_SEQ
-GENERAL_TIMEOUT = module.GENERAL_TIMEOUT
-PULSEBLOCKS = module.PULSEBLOCKS
+DEADTIME_BUFFER = BL_par.DEADTIME_BUFFER
+DEFAULT_SEQ = BL_par.DEFAULT_SEQ
+GENERAL_TIMEOUT = BL_par.GENERAL_TIMEOUT
+PULSEBLOCKS = BL_par.PULSEBLOCKS
 
 
 class PANDA(Enum):
@@ -225,13 +225,6 @@ def disable_sequencer(panda: HDFPanda, n_seq: int = 1,  wait: bool = False, grou
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
-def setup_oav(oav: OAV,  parameters: OAVParameters, group="oav_setup"):
-
-    yield from bps.abs_set(oav.cam.color_mode, ColorMode.RGB1, group=group)
-    yield from bps.abs_set(oav.cam.acquire_period, parameters.acquire_period, group=group)
-    yield from bps.abs_set(oav.cam.acquire_time, parameters.exposure, group=group)
-    yield from bps.abs_set(oav.cam.gain, parameters.gain, group=group)
-
 
 
 def stage_and_prepare_detectors(detectors: list, flyer: StandardFlyer, trigger_info: TriggerInfo, group="det_atm"):
@@ -310,7 +303,7 @@ def generate_repeated_trigger_info(profile: Profile, max_deadtime: float, liveti
         trigger_info = TriggerInfo(number_of_triggers=n_triggers*n_cycles, 
                                 trigger=trigger, 
                                 deadtime=max_deadtime,
-                                livetime=duration,
+                                livetime=profile.duration,
                                 multiplier=multiplier,
                                 frame_timeout=None)
 
@@ -332,10 +325,12 @@ def prepare_pulses(panda: HDFPanda):
     yield from bps.wait(group=group, timeout=GENERAL_TIMEOUT)
 
 
-def check_and_apply_panda_settings(panda: HDFPanda) -> None:
+def check_and_apply_panda_settings(panda: HDFPanda, panda_name: str) -> MsgGenerator:
+
+    CONFIG_NAME = 'PandaTrigger'
 
     yaml_directory = os.path.join(os.path.dirname(os.path.realpath(__file__)),"ophyd_panda_yamls") #this is the directory where the yaml files are stored
-    yaml_file_name = f"{beamline}_{CONFIG_NAME}_{panda_name}"
+    yaml_file_name = f"{BL}_{CONFIG_NAME}_{panda_name}"
 
     current_panda_settings = yield from get_current_settings(panda)
     yaml_settings = yield from load_settings_from_yaml(yaml_directory, yaml_file_name)
@@ -348,10 +343,6 @@ def check_and_apply_panda_settings(panda: HDFPanda) -> None:
         LOGGER.info(f"{yaml_file_name}.yaml has been uploaded to PandA")
         ######### make sure correct yaml is loaded
         yield from upload_yaml_to_panda(yaml_directory=yaml_directory,yaml_file_name=yaml_file_name,panda=panda)
-    
-    #load Panda setting to panda
-    if force_load == True:
-        yield from check_and_apply_panda_settings(panda)
 
 
 def check_tetramm():
@@ -397,8 +388,6 @@ def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to
     run_immediately: bool = True,
     panda_name="panda1", 
     force_load=True) -> MsgGenerator[None]:
-
-    CONFIG_NAME = 'PandaTrigger'
 
     if isinstance(profile, str):
         profile = Profile.model_validate(from_json(profile, allow_partial=True)) #convert from json to Profile object
@@ -446,7 +435,7 @@ def configure_panda_triggering(beamline: Annotated[str, "Name of the beamline to
 
     #load Panda setting to panda
     if force_load == True:
-        yield from check_and_apply_panda_settings(panda)
+        yield from check_and_apply_panda_settings(panda, panda_name)
 
     active_pulses = profile.active_out+1 #because python counts from 0, but panda counts from 1
     n_cycles = profile.cycles

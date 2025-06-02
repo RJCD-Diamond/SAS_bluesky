@@ -20,6 +20,10 @@ from ophyd_async.fastcs.panda import (
 )
 
 
+from dodal.devices.oav.oav_detector import OAV
+from dodal.devices.oav.oav_parameters import OAVParameters
+from dodal.devices.areadetector.plugins.CAM import ColorMode
+
 from dodal.beamlines import module_name_for_beamline
 from dodal.utils import make_device, make_all_devices
 
@@ -111,14 +115,7 @@ def load_settings_from_yaml(yaml_directory: str, yaml_file_name: str):
 
     return settings
 
-
-def upload_modified_settings_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda):
-
-    settings = yield from retrieve_settings(provider, yaml_file_name, panda)
-    yield from apply_panda_settings(settings)
-
-
-def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> None:
+def upload_yaml_to_panda(yaml_directory: str, yaml_file_name: str, panda: HDFPanda) -> MsgGenerator:
 
     """
     
@@ -145,3 +142,11 @@ def save_device_to_yaml(yaml_directory: str, yaml_file_name: str, device) -> Msg
 
     provider = YamlSettingsProvider(yaml_directory)
     yield from store_settings(provider, yaml_file_name, device)
+    
+
+def setup_oav(oav: OAV,  parameters: OAVParameters, group="oav_setup"):
+
+    yield from bps.abs_set(oav.cam.color_mode, ColorMode.RGB1, group=group)
+    yield from bps.abs_set(oav.cam.acquire_period, parameters.acquire_period, group=group)
+    yield from bps.abs_set(oav.cam.acquire_time, parameters.exposure, group=group)
+    yield from bps.abs_set(oav.cam.gain, parameters.gain, group=group)
