@@ -1,5 +1,20 @@
-"""A place for plans controlling the panda triggering."""
+import os
+import importlib
 
-from .ncd_panda import configure_panda_triggering, run_panda_triggering
+# Dynamically import all modules in the current package
+__all__ = []
 
-__all__ = ["configure_panda_triggering", "run_panda_triggering"]
+package_dir = os.path.dirname(__file__)
+for module_name in os.listdir(package_dir):
+
+
+    if module_name.endswith(".py") and module_name != "__init__.py":
+        module = module_name[:-3]  # Strip the .py extension
+
+        print(module)
+
+        imported_module = importlib.import_module(f".{module}", package=__name__)
+        __all__.append(module)
+
+
+print(__all__)
